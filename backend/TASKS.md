@@ -5,6 +5,54 @@
 
 ---
 
+## 实施进度
+
+> 2026-07-07 更新
+
+- [x] **P0 搭建后端框架**：FastAPI + 分层目录（api/services/core/data/schemas/ai）
+- [x] **P0 数据池迁移**：foods/signs/almanac/avoids/suitable 全部迁入 `app/data/`，icons 保留前端
+- [x] **P0 核心算法迁移**：`core/seed.py`（today_info/seeded_random/pick_sign_no）+ `core/picker.py`（pick_today_food/pick_by_tags/pick_any/pick_suitable/pick_avoid/pick_lucky/pick_sign_obj）
+- [x] **P0 GET /api/fortune/today**：每日食历 + 今日菜品，按 date 缓存
+- [x] **P0 POST /api/fortune/draw**：基础版（不含 AI，走本地 pick_by_tags 兜底），支持 excludeId + preferences
+- [x] **AI 接入工具预留**：`app/ai/` 抽象 `AIProvider` + `DummyProvider` + `OpenAIAgentsProvider`（基于 openai-agents SDK），通过 `USE_AI=1` 切换
+- [x] **测试**：18 个用例覆盖种子稳定性 + 两个接口（`pytest` 全绿）
+- [ ] **P1 接入 AI1**：`USE_AI=1` + `OPENAI_API_KEY` 实测 note 解析（需真实 key）
+- [ ] **P2 前端改造**：`useFortune.js` 删除本地兜底，改请求 `/api/fortune/today` 与 `/api/fortune/draw`
+- [ ] **P2 AI2 / AI3**：个性化理由、动态签文（接口已预留，按需启用）
+
+### 本地运行
+
+```bash
+# 激活虚拟环境
+source ~/.py_food/bin/activate
+
+# 安装依赖（正常环境）
+cd backend && pip install -r requirements.txt
+
+# 若虚拟环境有沙箱权限限制（OSError: Operation not permitted），
+# 可装到本地 .vendor 目录并设置 PYTHONPATH：
+pip install --target .vendor --no-deps fastapi pytest annotated_doc
+pip install --target .vendor pluggy iniconfig packaging pygments
+
+# 启动服务
+PYTHONPATH=.vendor:. python -m uvicorn app.main:app --reload --port 8000
+
+# 运行测试
+PYTHONPATH=.vendor:. python -m pytest -v
+```
+
+### 启用 AI
+
+```bash
+cp .env.example .env
+# 编辑 .env：
+#   USE_AI=1
+#   OPENAI_API_KEY=sk-xxx
+#   OPENAI_MODEL=gpt-4o-mini
+```
+
+---
+
 ## 一、前端按钮触发事件（需迁移后端）
 
 ### 1. 「再开一签」按钮 — 食历页 (Home.vue)

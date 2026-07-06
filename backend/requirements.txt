@@ -1,0 +1,16 @@
+# ===== Web 框架 =====
+fastapi>=0.110.0
+# 注：本地环境已装 uvicorn，避免 [standard] 触发 uvloop 升级冲突
+uvicorn>=0.27.0
+
+# ===== 数据校验 =====
+pydantic>=2.6.0
+
+# ===== AI 接入（预留） =====
+# OpenAI Agents SDK —— 用于「想吃点啥」自由文本解析、个性化推荐理由
+# 通过环境变量 USE_AI=1 启用，默认走 DummyProvider 占位实现
+openai-agents>=0.0.10
+
+# ===== 测试 =====
+pytest>=8.0.0
+httpx>=0.27.0

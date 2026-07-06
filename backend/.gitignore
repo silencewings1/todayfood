@@ -1,0 +1,22 @@
+# 后端开发忽略
+# 本地虚拟环境（用户用 ~/.py_food/bin/activate，但 backend/.venv 也常见）
+.venv/
+venv/
+# 本地依赖目录（因沙箱权限限制装的临时依赖，不应提交）
+.vendor/
+
+# 本地 .env（含 OPENAI_API_KEY 等密钥，不提交）
+.env
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+
+# 测试 / 类型检查缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 上传文件 / 临时文件
+uploads/
+tmp/
