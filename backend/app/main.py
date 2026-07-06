@@ -13,8 +13,9 @@
 from __future__ import annotations
 
 import logging
+import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.fortune import router as fortune_router
@@ -57,6 +58,37 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # 请求日志中间件：每次 /api 请求都打印一行明显的日志，便于前端联调观察
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        # 跳过 /docs /openapi.json 等非业务请求，减少噪音
+        path = request.url.path
+        if not path.startswith("/api"):
+            return await call_next(request)
+
+        method = request.method
+        client = request.client.host if request.client else "?"
+        start = time.perf_counter()
+
+        # POST 打印请求体（便于看到前端传了什么偏好）
+        body_preview = ""
+        if method == "POST":
+            try:
+                raw = await request.body()
+                body_preview = raw.decode("utf-8")[:200]
+            except Exception:
+                body_preview = "<read failed>"
+
+        response = await call_next(request)
+
+        cost_ms = (time.perf_counter() - start) * 1000
+        logger.info(
+            "👉 %s %s <- %s -> %d (%.1fms)%s",
+            method, path, client, response.status_code, cost_ms,
+            f" body={body_preview}" if body_preview else "",
+        )
+        return response
 
     # 路由注册
     app.include_router(meta_router)

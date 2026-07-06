@@ -1,0 +1,63 @@
+# ===== 今日宜吃 · AI 配置 =====
+# 通过修改此文件控制 AI 启用、协议、模型、各 agent 开关
+# 敏感信息（api_key）建议通过环境变量 OPENAI_API_KEY 传入，不写入本文件
+#
+# 修改后无需重启：后端 --reload 模式会自动重载
+# 配置文件不存在或解析失败时，回退默认值（AI 关闭，零配置可用）
+
+[ai]
+# 是否启用 AI（默认启用）
+# - 启用后：所有推荐/解析优先走 AI，AI 异常或超时(见 ai_timeout)自动回退本地数据池
+# - 关闭后：直接走本地数据池，零配置可用
+# 注意：启用 AI 需配置环境变量 OPENAI_API_KEY，否则会自动回退本地
+enabled = true
+
+# API 协议（二选一）：
+#   chat_completions -> POST /v1/chat/completions
+#     兼容 OpenAI 官方 + 绝大多数第三方兼容服务（deepseek / moonshot / 通义千问 / 智谱等）
+#   responses        -> POST /v1/responses
+#     OpenAI 官方新协议，支持更丰富的工具调用与多轮对话
+api_protocol = "chat_completions"
+
+# OpenAI / 兼容服务地址
+# 留空 -> 走 OpenAI 官方（https://api.openai.com/v1）
+# 填入第三方兼容服务地址即可切换后端，例如：
+#   "https://api.deepseek.com/v1"
+#   "https://api.moonshot.cn/v1"
+#   "https://dashscope.aliyuncs.com/compatible-mode/v1"
+base_url = ""
+
+# 默认模型（各 agent 未单独指定 model 时用此值）
+model = "gpt-4o-mini"
+
+# AI 调用整体超时（秒）
+# 超过此时间未返回，自动回退本地数据池
+ai_timeout = 20
+
+# HTTP 客户端请求超时（秒）
+timeout = 30
+
+# 失败重试次数（0=不重试）
+max_retries = 2
+
+
+# ===== 三个 AI 接入点（对应 TASKS.md AI1/AI2/AI3）=====
+# 每个接入点可独立开关、独立配置模型与温度
+
+[ai.agents.note_parser]
+# AI1: 「想吃点啥」自由文本解析为结构化偏好
+enabled = true
+model = ""          # 留空用全局 ai.model
+temperature = 0.2   # 低温度，结构化输出更稳定
+
+[ai.agents.reason_writer]
+# AI2: 个性化推荐理由
+enabled = true
+model = ""
+temperature = 0.8   # 高温度，文案更有创意
+
+[ai.agents.sign_generator]
+# AI3: 动态签文生成（优先级最低，默认关）
+enabled = false
+model = ""
+temperature = 0.9

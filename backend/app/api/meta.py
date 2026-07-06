@@ -22,9 +22,22 @@ def root() -> dict:
 
 @router.get("/health", summary="健康检查")
 def health() -> dict:
+    ai = settings.ai
+    provider = get_ai_provider()
     return {
         "status": "ok",
-        "ai_provider": get_ai_provider().name,
-        "ai_enabled": get_ai_provider().enabled,
-        "use_ai_config": settings.use_ai,
+        "ai_provider": provider.name,
+        "ai_enabled": provider.enabled,
+        "ai_config": {
+            "enabled": ai.enabled,
+            "api_protocol": ai.api_protocol,
+            "model": ai.model,
+            "base_url": ai.base_url or "(OpenAI 官方)",
+            "ai_timeout": ai.ai_timeout,
+            "has_api_key": bool(ai.api_key),
+            "agents": {
+                name: {"enabled": cfg.enabled, "model": cfg.model or ai.model, "temperature": cfg.temperature}
+                for name, cfg in ai.agents.items()
+            },
+        },
     }
