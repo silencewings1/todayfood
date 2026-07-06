@@ -1,0 +1,48 @@
+# ===== 依赖 =====
+node_modules
+.pnpm-store
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+vendor/
+
+# ===== 构建产物 =====
+dist
+dist-ssr
+*.local
+build/
+*.class
+
+# ===== 编辑器 / 系统 =====
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# ===== 日志 =====
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs
+*.log
+
+# ===== 环境变量 / 密钥 =====
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ===== 缓存 =====
+.vite
+.cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ===== 上传/临时文件 =====
+uploads/
+tmp/

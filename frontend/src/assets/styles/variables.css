@@ -1,0 +1,48 @@
+/* ===== 今日宜吃 · 暮光橙暖米配色 ===== */
+:root {
+  /* 背景层 */
+  --bg: #f7ead6;
+  --bg-deep: #f0dec2;
+  --card: #fdf7ec;
+  --card-soft: #f9ecd6;
+  --card-warm: #f5e4c8;
+
+  /* 文字层 */
+  --ink: #2a1408;
+  --ink-strong: #1a0a02;
+  --ink-soft: #8b6a4d;
+  --ink-muted: #b89a7c;
+
+  /* 描边/分隔 */
+  --rule: #e6d2b0;
+  --rule-dashed: #d4bc92;
+
+  /* 主色橙 */
+  --accent: #c4622d;
+  --accent-deep: #a04a18;
+  --accent-light: #e89a5c;
+  --accent-soft: rgba(196, 98, 45, 0.10);
+  --accent-btn-start: #e89a5c;
+  --accent-btn-end: #c4622d;
+
+  /* 宜/忌 */
+  --yi-color: #6b8038;
+  --ji-color: #c45a2e;
+
+  /* 阴影 */
+  --shadow-soft: 0 10px 30px -10px rgba(160, 90, 30, 0.22);
+  --shadow-btn: 0 12px 28px -8px rgba(196, 98, 45, 0.4);
+
+  /* 字体 */
+  --font-base: -apple-system, BlinkMacSystemFont, "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+
+  /* 圆角 */
+  --r-card: 28px;
+  --r-pill: 999px;
+  --r-block: 18px;
+  --r-chip: 999px;
+
+  /* 间距 */
+  --pad-page: 24px;
+}
