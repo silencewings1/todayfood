@@ -13,8 +13,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# 启动时自动加载 backend/.env（若存在），将其中变量注入 os.environ
+# 这样 os.getenv 即可读到 .env 里的配置，无需手动 source
+try:
+    from dotenv import load_dotenv
+    _BACKEND_ROOT = Path(__file__).resolve().parent.parent
+    load_dotenv(_BACKEND_ROOT / ".env")
+except ImportError:
+    pass
+
 # backend/ 目录
-_BACKEND_ROOT = Path(__file__).resolve().parent.parent
 _AI_CONFIG_PATH = _BACKEND_ROOT / "config" / "ai.toml"
 
 
