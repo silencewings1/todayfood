@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.fortune import router as fortune_router
 from app.api.meta import router as meta_router
 from app.config import settings
+from app.services.scheduler import daily_refresh_task
 
 # 日志配置
 logging.basicConfig(
@@ -60,6 +61,16 @@ def create_app() -> FastAPI:
     # 路由注册
     app.include_router(meta_router)
     app.include_router(fortune_router)
+
+    # 生命周期：启动时预热缓存 + 后台每日刷新任务
+    @app.on_event("startup")
+    def _on_startup() -> None:
+        # 启动后台线程，内部会立即预热当日缓存
+        daily_refresh_task.start()
+
+    @app.on_event("shutdown")
+    def _on_shutdown() -> None:
+        daily_refresh_task.stop()
 
     logger.info("FastAPI 应用已创建，AI 启用状态: %s", settings.use_ai)
     return app

@@ -1,190 +1,87 @@
 /**
- * useFortune - 今日宜吃核心逻辑
- * 包含：日期种子、抽签、个性化匹配、忌吃/宜吃/幸运三件套生成
+ * useFortune - 今日宜吃核心逻辑（接入后端版）
+ *
+ * 数据来源：
+ *   - GET  /api/fortune/today  获取今日食历 + 今日菜品（每日固定）
+ *   - POST /api/fortune/draw   抽一道新菜（支持偏好）
+ *
+ * 本文件不再持有任何业务数据池，所有数据由后端返回。
+ * 仅保留：状态管理、接口请求、分享文案拼接。
  */
 import { ref, reactive, computed } from 'vue'
-import { foodPool } from '@/data/foods'
-import { signPool, pickSign as pickSignFromPool } from '@/data/signs'
-import { avoidPool } from '@/data/avoids'
-import { suitablePool } from '@/data/suitable'
-import { pickAlmanacYi, pickAlmanacJi } from '@/data/almanac'
 
-/* ===== 日期 / 种子 ===== */
-export function todayInfo() {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = d.getMonth() + 1
-  const day = d.getDate()
-  const week = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()]
-  return {
-    text: `${y} 年 ${m} 月 ${day} 日 · 周${week}`,
-    short: `${m} 月 ${day} 日`,
-    week,
-    seed: y * 10000 + m * 100 + day
-  }
-}
+/* ===== 后端接口 ===== */
+const API_TODAY = '/api/fortune/today'
+const API_DRAW = '/api/fortune/draw'
 
-/** 基于种子的伪随机数生成器（LCG） */
-export function seededRandom(seed) {
-  let s = seed
-  return function () {
-    s = (s * 9301 + 49297) % 233280
-    return s / 233280
-  }
-}
-
-/* ===== 选择逻辑 ===== */
-
-/** 根据个性化标签加权打分，挑出最匹配的菜品（使用 mood + flavor；note 留给后端） */
-export function pickByTags(prefs, saltSeed = null) {
-  const seed = saltSeed ?? (todayInfo().seed + Date.now() % 1000)
-  const rand = seededRandom(seed)
-  const scored = foodPool.map(f => {
-    let score = 0
-    if (prefs.mood && f.tags.mood.includes(prefs.mood)) score += 3
-    if (prefs.flavor && f.tags.flavor.includes(prefs.flavor)) score += 3
-    score += rand() * 1.2
-    return { f, score }
-  })
-  scored.sort((a, b) => b.score - a.score)
-  return scored[0].f
-}
-
-/** 完全随机挑一个菜品（可排除指定菜品） */
-export function pickAny(exclude = null) {
-  const pool = exclude ? foodPool.filter(f => f.id !== exclude.id) : foodPool
-  const idx = Math.floor(Math.random() * pool.length)
-  return pool[idx]
-}
-
-/** 按日期种子挑"今日固定"菜品（每天稳定） */
-export function pickTodayFood() {
-  const seed = todayInfo().seed
-  const rand = seededRandom(seed)
-  const idx = Math.floor(rand() * foodPool.length)
-  return foodPool[idx]
-}
-
-/** 选今日宜吃组（3 条） */
-export function pickSuitable(seed) {
-  const rand = seededRandom(seed)
-  return suitablePool[Math.floor(rand() * suitablePool.length)]
-}
-
-/** 选今日忌吃清单（3-5 条） */
-export function pickAvoid(seed) {
-  const rand = seededRandom(seed + 17)
-  const count = 3 + Math.floor(rand() * 2)
-  const shuffled = [...avoidPool].sort(() => rand() - 0.5)
-  return shuffled.slice(0, count)
-}
-
-/** 选今日幸运三件套（口味 / 幸运色 / 食神方位-趣味描述） */
-export function pickLucky(seed) {
-  const rand = seededRandom(seed + 31)
-  const flavors = ['微辣', '清淡', '酸甜', '奶香', '酱香', '麻辣', '酸辣', '原味', '咸鲜', '甘甜']
-  const colors = ['暖橙', '正红', '薄荷绿', '麦黄', '米白', '姜黄', '焦糖', '番茄红']
-  const directions = [
-    '那家总排队的店',
-    '楼下走两步那家',
-    '常点的那家老店',
-    '朋友推荐过的新店',
-    '外卖好评榜首位',
-    '出地铁左拐那家',
-    '公司食堂三楼',
-    '冰箱里剩下的菜',
-    '巷口藏着的小摊',
-    '家里的厨房'
-  ]
-  return {
-    flavor: flavors[Math.floor(rand() * flavors.length)],
-    color: colors[Math.floor(rand() * colors.length)],
-    direction: directions[Math.floor(rand() * directions.length)]
-  }
-}
-
-/** 抽签编号（1-99 之间，按种子稳定） */
-export function pickSignNo(seed) {
-  return 1 + Math.floor(((seed * 7) % 233280) / 233280 * 99)
-}
-
-/** 抽一支签（返回 { name, level, text }） */
-export function pickSignObj(seed) {
-  return pickSignFromPool(seed)
-}
-
-/* ===== 全局状态 composable ===== */
+/* ===== 全局状态 ===== */
 const state = reactive({
-  current: null,
+  current: null,           // 当前菜品（今日菜品 或 开签后切换的菜品）
   locked: false,
   drawing: false,
+  loaded: false,           // 当日数据是否已加载
   preferences: { mood: null, flavor: null, note: '' }
 })
 
-const today = todayInfo()
+const today = ref({ text: '', short: '', week: '', seed: 0, date: '' })
+const dailyExtras = ref(null)  // 今日食历内容（每日固定，不随开签变化）
+let loadPromise = null         // 防止重复请求
 
-/** 初始化默认推荐 */
+/** 拉取今日食历 + 今日菜品（每日固定） */
+async function loadToday() {
+  if (loadPromise) return loadPromise
+  loadPromise = (async () => {
+    try {
+      const res = await fetch(API_TODAY)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      today.value = data.today
+      dailyExtras.value = data.extras
+      // 仅在首次加载或被清空时设置 current，避免覆盖开签后的菜品
+      if (!state.current) {
+        state.current = data.todayFood
+      }
+      state.loaded = true
+    } catch (e) {
+      console.error('[useFortune] 加载今日食历失败:', e)
+      throw e
+    } finally {
+      loadPromise = null
+    }
+  })()
+  return loadPromise
+}
+
+/* ===== 抽签：请求后端 ===== */
+async function fetchDrawResult() {
+  const body = {
+    excludeId: state.current?.id || null,
+    preferences: { ...state.preferences }
+  }
+  const res = await fetch(API_DRAW, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  return data.food
+}
+
+/* ===== 全局 composable ===== */
+
+/** 使用食历状态，首次调用会自动触发今日数据加载 */
 export function useFortune() {
-  // 如果还没初始化，按今日种子挑一个
-  if (!state.current) {
-    state.current = pickTodayFood()
+  // 首次调用时加载今日数据
+  if (!state.loaded && !loadPromise) {
+    loadToday()
   }
 
   const current = computed(() => state.current)
   const locked = computed(() => state.locked)
   const preferences = computed(() => state.preferences)
 
-  /**
-   * 派生数据：宜吃/忌吃/幸运三件套/签号/签文
-   * 全部基于 today.seed 稳定生成，"今日食历"每日固定不变；
-   * 开签只换 state.current（菜品），不影响本卡内容。
-   */
-  const dailyExtras = computed(() => {
-    const f = state.current
-    if (!f) return null
-    const signObj = pickSignObj(today.seed)
-    return {
-      almanacYi: pickAlmanacYi(today.seed),
-      almanacJi: pickAlmanacJi(today.seed),
-      suitable: pickSuitable(today.seed),
-      avoid: pickAvoid(today.seed),
-      lucky: pickLucky(today.seed),
-      signNo: pickSignNo(today.seed),
-      signName: signObj.name,
-      signLevel: signObj.level,
-      signText: signObj.text
-    }
-  })
-
-  /**
-   * 向后端请求新签结果（接入后端时替换此函数）
-   * TODO: 接入后端 API，例如：
-   *   const res = await fetch('/api/fortune/draw', { method: 'POST', body: JSON.stringify({ prefs: state.preferences }) })
-   *   return await res.json()
-   * 当前走本地兜底：随机挑一个菜品。
-   */
-  async function fetchDrawResult() {
-    // 模拟一点网络延迟（0.3~0.9s），让动画自然；接入真实后端时可删除
-    await new Promise(r => setTimeout(r, 300 + Math.random() * 600))
-    const prefs = state.preferences
-    const haveAny = Object.values(prefs).some(v => v)
-    // 排除当前菜品，确保每次"再开一签"都会切换
-    const current = state.current
-    let result
-    if (haveAny) {
-      // 用当前时间作为盐，保证每次调用结果不同
-      result = pickByTags(prefs, todayInfo().seed + Date.now())
-      // 兜底：如果选出来的和当前一样，随机挑一个不同的
-      if (current && result.id === current.id) {
-        result = pickAny(current)
-      }
-    } else {
-      result = pickAny(current)
-    }
-    return result
-  }
-
-  /** 重抽（异步，带 drawing 状态锁；预留后端调用） */
+  /** 重抽（异步，带 drawing 状态锁） */
   async function redraw() {
     if (state.drawing) return state.current
     state.drawing = true
@@ -198,7 +95,7 @@ export function useFortune() {
     }
   }
 
-  /** 按偏好抽（复用 redraw 逻辑，保持一致） */
+  /** 按偏好抽（复用 redraw） */
   async function pickByPreference() {
     return redraw()
   }
@@ -247,6 +144,7 @@ export function useFortune() {
     lockResult,
     resetPreferences,
     setPreference,
-    buildShareText
+    buildShareText,
+    loadToday
   }
 }
