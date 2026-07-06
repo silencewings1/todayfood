@@ -3,6 +3,10 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   {
     path: '/',
+    redirect: '/index'
+  },
+  {
+    path: '/index',
     name: 'food',
     component: () => import('@/views/Home.vue'),
     meta: { tab: 'food', title: '今日宜吃' }

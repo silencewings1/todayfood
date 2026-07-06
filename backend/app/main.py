@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.fortune import router as fortune_router
 from app.api.meta import router as meta_router
@@ -29,6 +32,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
 
 def create_app() -> FastAPI:
@@ -93,6 +98,19 @@ def create_app() -> FastAPI:
     # 路由注册
     app.include_router(meta_router)
     app.include_router(fortune_router)
+
+    # 生产部署：后端直接托管 Vite 构建产物，开发环境无 dist 时跳过
+    if FRONTEND_DIST.exists():
+        assets_dir = FRONTEND_DIST / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def serve_frontend(full_path: str):
+            target = FRONTEND_DIST / full_path
+            if full_path and target.is_file():
+                return FileResponse(target)
+            return FileResponse(FRONTEND_DIST / "index.html")
 
     # 生命周期：启动时预热缓存 + 后台每日刷新任务
     @app.on_event("startup")

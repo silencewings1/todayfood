@@ -1,4 +1,4 @@
-"""根健康检查 & 首页"""
+"""元信息 & 健康检查"""
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -10,7 +10,7 @@ from app.config import settings
 router = APIRouter(tags=["meta"])
 
 
-@router.get("/", summary="服务根路径")
+@router.get("/meta", summary="服务元信息")
 def root() -> dict:
     return {
         "name": "今日宜吃 API",
