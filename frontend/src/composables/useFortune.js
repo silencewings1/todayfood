@@ -7,12 +7,15 @@
  *
  * 本文件不再持有任何业务数据池，所有数据由后端返回。
  * 仅保留：状态管理、接口请求、分享文案拼接。
+ *
+ * 接口路径集中在 src/config.js，端口/代理目标在 .env 中配置。
  */
 import { ref, reactive, computed } from 'vue'
+import { API } from '@/config'
 
 /* ===== 后端接口 ===== */
-const API_TODAY = '/api/fortune/today'
-const API_DRAW = '/api/fortune/draw'
+const API_TODAY = API.TODAY
+const API_DRAW = API.DRAW
 
 /* ===== 全局状态 ===== */
 const state = reactive({
