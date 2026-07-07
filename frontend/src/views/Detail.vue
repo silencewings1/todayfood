@@ -134,9 +134,18 @@
             <span class="meta-dot">·</span>
             <span class="meta-item">🧭 {{ result.direction }}</span>
           </div>
+
+          <!-- 做法入口 -->
+          <button class="recipe-trigger" @click="showRecipe = true">
+            <span class="recipe-trigger-text">看看怎么做</span>
+            <span class="recipe-trigger-arrow">›</span>
+          </button>
         </div>
       </div>
     </section>
+
+    <!-- 菜品做法 Bottom Sheet -->
+    <RecipeSheet v-model:visible="showRecipe" :food="result" />
 
     <p class="disclaimer">娱乐参考，不代表真实预测 · 认真吃饭，开心最重要</p>
   </div>
@@ -148,9 +157,11 @@ import { useFortune } from '@/composables/useFortune'
 import { getFoodSvg, foodIcons } from '@/data/icons'
 import DrawOverlay from '@/components/DrawOverlay.vue'
 import AppHeader from '@/components/AppHeader.vue'
+import RecipeSheet from '@/components/RecipeSheet.vue'
 
 const { current, state, drawing, redraw } = useFortune()
 const showOverlay = ref(false)
+const showRecipe = ref(false)
 let pendingRedraw = null
 
 // 菜品 SVG 图标，无匹配时用 tomato-beef 兜底
@@ -515,6 +526,37 @@ async function onAnimFinished() {
 
 .meta-dot {
   color: var(--rule-dashed);
+}
+
+/* 做法入口 */
+.recipe-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 12px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--card-soft), var(--card-warm));
+  border: 1.5px solid var(--rule);
+  color: var(--accent);
+  font-size: 0.92rem;
+  font-weight: 700;
+  transition: transform 0.15s, border-color 0.2s;
+}
+.recipe-trigger:active {
+  transform: scale(0.98);
+  border-color: var(--accent-light);
+}
+.recipe-trigger-text {
+  letter-spacing: -0.01em;
+}
+.recipe-trigger-arrow {
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--accent-light);
+  font-weight: 400;
 }
 
 .disclaimer {
