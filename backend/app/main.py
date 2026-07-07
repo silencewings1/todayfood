@@ -54,18 +54,11 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
-    # CORS：允许前端开发服务器访问
-    origins = [
-        settings.frontend_origin,                # 默认 http://localhost:5173
-        "http://localhost:5174",                 # Vite 端口漂移兜底
-        "http://localhost:5175",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5175",
-    ]
+    # CORS：允许的前端来源（来自 config/app.toml [server].frontend_origins
+    # 或环境变量 FRONTEND_ORIGIN，逗号分隔）
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins,
+        allow_origins=list(settings.frontend_origins),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

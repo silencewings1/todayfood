@@ -6,6 +6,9 @@
 - admin_sessions: 登录 session
 
 存储路径：backend/data/log.db（data/ 已加入 .gitignore）
+
+查询参数（query_days / query_max_rows）从 config/app.toml [admin.logs] 读取，
+可由环境变量 ADMIN_LOG_QUERY_DAYS / ADMIN_LOG_MAX_ROWS 覆盖。
 """
 from __future__ import annotations
 
@@ -15,13 +18,21 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from app.config import settings
+
 # backend/data/log.db
 _BACKEND_ROOT = Path(__file__).resolve().parents[2] / "backend"
 _DB_DIR = _BACKEND_ROOT / "data"
 _DB_PATH = _DB_DIR / "log.db"
 
-QUERY_DAYS = 30
-QUERY_MAX_ROWS = 10000
+# 查询参数来自配置；用函数读取保证热加载生效
+def _query_days() -> int:
+    return settings.admin.logs.query_days
+
+
+def _query_max_rows() -> int:
+    return settings.admin.logs.query_max_rows
+
 
 _lock = threading.Lock()
 
@@ -112,8 +123,9 @@ def query_api_logs(*, page: int = 1, page_size: int = 50,
 
     返回 {"items": [...], "total": N, "page": p, "page_size": s}
     """
-    cutoff = time.time() - QUERY_DAYS * 86400
-    where = ["ts >= ?", f"id IN (SELECT id FROM api_logs ORDER BY id DESC LIMIT {QUERY_MAX_ROWS})"]
+    cutoff = time.time() - _query_days() * 86400
+    max_rows = _query_max_rows()
+    where = ["ts >= ?", f"id IN (SELECT id FROM api_logs ORDER BY id DESC LIMIT {max_rows})"]
     params: list = [cutoff]
     if path:
         where.append("path LIKE ?")
@@ -149,8 +161,9 @@ def query_api_logs(*, page: int = 1, page_size: int = 50,
 def query_ai_logs(*, page: int = 1, page_size: int = 50,
                   agent: str = "", success: Optional[bool] = None,
                   fallback: Optional[bool] = None) -> dict[str, Any]:
-    cutoff = time.time() - QUERY_DAYS * 86400
-    where = ["ts >= ?", f"id IN (SELECT id FROM ai_logs ORDER BY id DESC LIMIT {QUERY_MAX_ROWS})"]
+    cutoff = time.time() - _query_days() * 86400
+    max_rows = _query_max_rows()
+    where = ["ts >= ?", f"id IN (SELECT id FROM ai_logs ORDER BY id DESC LIMIT {max_rows})"]
     params: list = [cutoff]
     if agent:
         where.append("agent = ?")

@@ -1,48 +1,46 @@
 """账号密码鉴权
 
-凭证从环境变量读取：ADMIN_USERNAME / ADMIN_PASSWORD
-默认 admin / admin123（仅本地用，生产必须改）
-"""
+凭证与 session 参数从 config/app.toml [admin] 读取，
+可被环境变量 ADMIN_USERNAME / ADMIN_PASSWORD / ADMIN_SESSION_COOKIE 等覆盖。
+默认 admin / admin123（仅本地用，生产必须改）"""
 from __future__ import annotations
 
-import os
 import secrets
-import time
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
-SESSION_COOKIE = "admin_token"
-SESSION_MAX_AGE = 86400  # 1 天
+from app.config import settings
 
 
 def login(username: str, password: str, response: Response) -> bool:
     """校验账号密码，成功则写 cookie 并返回 True"""
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+    cfg = settings.admin
+    if username == cfg.username and password == cfg.password:
         token = secrets.token_urlsafe(32)
         from admin.backend import db
-        db.create_session(token, SESSION_MAX_AGE)
+        db.create_session(token, cfg.session_max_age)
         response.set_cookie(
-            key=SESSION_COOKIE, value=token,
-            max_age=SESSION_MAX_AGE, httponly=True, samesite="lax",
+            key=cfg.session_cookie, value=token,
+            max_age=cfg.session_max_age, httponly=True, samesite="lax",
         )
         return True
     return False
 
 
 def logout(request: Request, response: Response) -> None:
-    token = request.cookies.get(SESSION_COOKIE)
+    cfg = settings.admin
+    token = request.cookies.get(cfg.session_cookie)
     if token:
         from admin.backend import db
         db.delete_session(token)
-    response.delete_cookie(SESSION_COOKIE)
+    response.delete_cookie(cfg.session_cookie)
 
 
 def check_auth(request: Request) -> bool:
     """校验请求是否已登录"""
-    token = request.cookies.get(SESSION_COOKIE)
+    cfg = settings.admin
+    token = request.cookies.get(cfg.session_cookie)
     if not token:
         return False
     from admin.backend import db

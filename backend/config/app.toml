@@ -1,0 +1,64 @@
+# ===== 今日宜吃 · 应用配置 =====
+# 非敏感的系统配置，可提交到 git，便于版本管理与多环境部署
+# 敏感信息（OPENAI_API_KEY / ADMIN_PASSWORD 等）请通过 .env 或环境变量注入
+#
+# 配置优先级（高 → 低）：
+#   环境变量 > .env > 本文件(app.toml) > 代码默认值
+# 修改后无需重启：后端 --reload 模式会自动重载
+
+# ===== 服务地址 =====
+[server]
+# 监听地址
+# - 本地开发：127.0.0.1
+# - 容器/生产：0.0.0.0
+host = "127.0.0.1"
+# 监听端口
+port = 8000
+# 允许跨域的前端地址（CORS 白名单）
+# 生产环境填实际前端域名，例如 ["https://todayfood.example.com"]
+frontend_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
+]
+
+# ===== 应用参数 =====
+[app]
+# 时区（影响"今日"判定，每日食历按此时区切换）
+timezone = "Asia/Shanghai"
+# 每日食历内存缓存（true=开启，false=每次重算）
+cache_enabled = true
+
+# ===== 每日刷新调度 =====
+[scheduler]
+# 后台检查日期切换的间隔（秒）
+# 默认 6 小时检查一次，检测到跨天即重新预热缓存
+check_interval_sec = 21600
+
+# ===== 后台管理（admin）=====
+# admin 可作为独立进程运行（admin/main.py），也可内嵌在主后端
+[admin]
+# 独立部署时的监听地址
+host = "0.0.0.0"
+# 独立部署时的监听端口
+port = 9082
+# 被监控的主后端 health 探测地址（admin 通过它拉取真实 AI 配置展示）
+# 内嵌部署时填主后端地址；独立部署时填主后端的实际地址
+monitored_health_url = "http://127.0.0.1:8000/health"
+# 登录 session cookie 名
+session_cookie = "admin_token"
+# session 有效期（秒），默认 1 天
+session_max_age = 86400
+# 默认账号（仅本地用，生产务必通过环境变量 ADMIN_USERNAME/ADMIN_PASSWORD 覆盖）
+username = "admin"
+password = "admin123"
+
+# ===== 后台日志查询 =====
+[admin.logs]
+# 日志保留查询天数（超过不返回，但仍可能在库中）
+query_days = 30
+# 单表最大返回行数上限（防止全表扫描）
+query_max_rows = 10000

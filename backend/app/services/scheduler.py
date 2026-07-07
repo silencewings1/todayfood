@@ -30,11 +30,16 @@ class DailyRefreshTask:
         task = DailyRefreshTask()
         task.start()  # 启动后台线程
         # task.stop()  # 关闭（可选）
+
+    配置来源（config/app.toml）：
+        [app] timezone                 -> 时区
+        [scheduler] check_interval_sec -> 检查间隔
+    也可通过环境变量 TZ / SCHEDULER_CHECK_INTERVAL 覆盖。
     """
 
-    def __init__(self, tz: str = "Asia/Shanghai", check_interval_sec: int = 6 * 3600) -> None:
-        self.tz = tz
-        self.check_interval = check_interval_sec
+    def __init__(self, tz: str | None = None, check_interval_sec: int | None = None) -> None:
+        self.tz = tz or settings.timezone
+        self.check_interval = check_interval_sec or settings.scheduler.check_interval_sec
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._last_date: str | None = None

@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import json
-import os
 from urllib.request import urlopen
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -69,7 +68,7 @@ def _local_ai_config() -> dict:
 
 
 def _monitored_ai_config() -> dict:
-    health_url = os.getenv("MONITORED_HEALTH_URL", "http://127.0.0.1:9081/health")
+    health_url = settings.admin.monitored_health_url
     try:
         with urlopen(health_url, timeout=2) as resp:
             data = json.loads(resp.read().decode("utf-8"))
