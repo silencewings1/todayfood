@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/home/ospacer/project/todayfood/backend
-Environment=USE_AI=0
+Environment=USE_AI=1
 Environment=HOST=0.0.0.0
 Environment=PORT=9081
 ExecStart=/home/ospacer/.py_food/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 9081

@@ -1,0 +1,7 @@
+[Unit]
+Description=Backup TodayFood logs and admin database
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ospacer/project/todayfood
+ExecStart=/usr/bin/env bash /home/ospacer/project/todayfood/deploy/backup_logs.sh

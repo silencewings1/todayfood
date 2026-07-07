@@ -10,6 +10,10 @@
 """
 from __future__ import annotations
 
+import json
+import os
+from urllib.request import urlopen
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -47,39 +51,56 @@ def require_auth(request: Request):
         raise HTTPException(status_code=401, detail="未登录或会话过期")
 
 
+def _local_ai_config() -> dict:
+    ai = settings.ai
+    return {
+        "enabled": ai.enabled,
+        "provider": "openai-agents" if ai.enabled and ai.api_key else "dummy",
+        "api_protocol": ai.api_protocol,
+        "model": ai.model,
+        "base_url": ai.base_url or "(OpenAI 官方)",
+        "ai_timeout": ai.ai_timeout,
+        "has_api_key": bool(ai.api_key),
+        "agents": {
+            name: {"enabled": cfg.enabled, "model": cfg.model or ai.model, "temperature": cfg.temperature}
+            for name, cfg in ai.agents.items()
+        },
+    }
+
+
+def _monitored_ai_config() -> dict:
+    health_url = os.getenv("MONITORED_HEALTH_URL", "http://127.0.0.1:9081/health")
+    try:
+        with urlopen(health_url, timeout=2) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        ai_config = data.get("ai_config") or _local_ai_config()
+        ai_config["provider"] = data.get("ai_provider", ai_config.get("provider", "dummy"))
+        return ai_config
+    except Exception:
+        return _local_ai_config()
+
+
 # ===== 系统状态 =====
 @router.get("/status", dependencies=[Depends(require_auth)])
 def status() -> dict:
-    ai = settings.ai
     return {
         "stats": db.get_stats(),
-        "ai_config": {
-            "enabled": ai.enabled,
-            "provider": "openai-agents" if ai.enabled and ai.api_key else "dummy",
-            "api_protocol": ai.api_protocol,
-            "model": ai.model,
-            "base_url": ai.base_url or "(OpenAI 官方)",
-            "ai_timeout": ai.ai_timeout,
-            "has_api_key": bool(ai.api_key),
-            "agents": {
-                name: {"enabled": cfg.enabled, "model": cfg.model or ai.model, "temperature": cfg.temperature}
-                for name, cfg in ai.agents.items()
-            },
-        },
+        "ai_config": _monitored_ai_config(),
     }
 
 
 # ===== API 日志 =====
 @router.get("/api-logs", dependencies=[Depends(require_auth)])
-def api_logs(page: int = 1, page_size: int = 50, path: str = "",
-             method: str = "", status: int = 0, keyword: str = "") -> dict:
+def api_logs(page: int = 1, page_size: int = 10, path: str = "",
+             method: str = "", status: str = "", keyword: str = "") -> dict:
+    status_val = int(status) if status else 0
     return db.query_api_logs(page=page, page_size=page_size, path=path,
-                             method=method, status=status, keyword=keyword)
+                             method=method, status=status_val, keyword=keyword)
 
 
 # ===== AI 日志 =====
 @router.get("/ai-logs", dependencies=[Depends(require_auth)])
-def ai_logs(page: int = 1, page_size: int = 50, agent: str = "",
+def ai_logs(page: int = 1, page_size: int = 10, agent: str = "",
             success: str = "", fallback: str = "") -> dict:
     success_val = None if success == "" else (success == "1")
     fallback_val = None if fallback == "" else (fallback == "1")

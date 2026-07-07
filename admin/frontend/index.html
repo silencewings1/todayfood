@@ -209,6 +209,7 @@ tr:hover td { background: #fafafa; }
 
 <script>
 const API = '/admin/api';
+const LOG_PAGE_SIZE = 10;
 let pollTimer = null;
 
 // ===== 登录 =====
@@ -319,7 +320,7 @@ async function loadApiLogs(page) {
   const status = document.getElementById('apiStatus').value;
   const path = document.getElementById('apiPath').value;
   const keyword = document.getElementById('apiKeyword').value;
-  const params = new URLSearchParams({page, page_size: 50, method, status, path, keyword});
+  const params = new URLSearchParams({page, page_size: LOG_PAGE_SIZE, method, status, path, keyword});
   try {
     const r = await fetch(`${API}/api-logs?${params}`, {credentials: 'include'});
     if (r.status === 401) { logout(); return; }
@@ -338,7 +339,7 @@ async function loadApiLogs(page) {
       </tr>`;
     }).join('') || '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
     document.getElementById('apiLogsBody').innerHTML = body;
-    renderPagination('apiPagination', page, d.total, 50, loadApiLogs);
+    renderPagination('apiPagination', page, d.total, LOG_PAGE_SIZE, loadApiLogs);
   } catch (e) {}
 }
 
@@ -349,7 +350,7 @@ async function loadAiLogs(page) {
   const agent = document.getElementById('aiAgent').value;
   const success = document.getElementById('aiSuccess').value;
   const fallback = document.getElementById('aiFallback').value;
-  const params = new URLSearchParams({page, page_size: 50, agent, success, fallback});
+  const params = new URLSearchParams({page, page_size: LOG_PAGE_SIZE, agent, success, fallback});
   try {
     const r = await fetch(`${API}/ai-logs?${params}`, {credentials: 'include'});
     if (r.status === 401) { logout(); return; }
@@ -370,7 +371,7 @@ async function loadAiLogs(page) {
       </tr>`;
     }).join('') || '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
     document.getElementById('aiLogsBody').innerHTML = body;
-    renderPagination('aiPagination', page, d.total, 50, loadAiLogs);
+    renderPagination('aiPagination', page, d.total, LOG_PAGE_SIZE, loadAiLogs);
   } catch (e) {}
 }
 

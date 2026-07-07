@@ -5,7 +5,7 @@
 - ai_logs: AI 模型调用日志
 - admin_sessions: 登录 session
 
-存储路径：backend/data/admin.db（data/ 已加入 .gitignore）
+存储路径：backend/data/log.db（data/ 已加入 .gitignore）
 """
 from __future__ import annotations
 
@@ -15,10 +15,13 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-# backend/data/admin.db
+# backend/data/log.db
 _BACKEND_ROOT = Path(__file__).resolve().parents[2] / "backend"
 _DB_DIR = _BACKEND_ROOT / "data"
-_DB_PATH = _DB_DIR / "admin.db"
+_DB_PATH = _DB_DIR / "log.db"
+
+QUERY_DAYS = 30
+QUERY_MAX_ROWS = 10000
 
 _lock = threading.Lock()
 
@@ -109,8 +112,9 @@ def query_api_logs(*, page: int = 1, page_size: int = 50,
 
     返回 {"items": [...], "total": N, "page": p, "page_size": s}
     """
-    where = []
-    params: list = []
+    cutoff = time.time() - QUERY_DAYS * 86400
+    where = ["ts >= ?", f"id IN (SELECT id FROM api_logs ORDER BY id DESC LIMIT {QUERY_MAX_ROWS})"]
+    params: list = [cutoff]
     if path:
         where.append("path LIKE ?")
         params.append(f"%{path}%")
@@ -145,8 +149,9 @@ def query_api_logs(*, page: int = 1, page_size: int = 50,
 def query_ai_logs(*, page: int = 1, page_size: int = 50,
                   agent: str = "", success: Optional[bool] = None,
                   fallback: Optional[bool] = None) -> dict[str, Any]:
-    where = []
-    params: list = []
+    cutoff = time.time() - QUERY_DAYS * 86400
+    where = ["ts >= ?", f"id IN (SELECT id FROM ai_logs ORDER BY id DESC LIMIT {QUERY_MAX_ROWS})"]
+    params: list = [cutoff]
     if agent:
         where.append("agent = ?")
         params.append(agent)
@@ -211,7 +216,7 @@ def clear_logs(table: str = "all") -> None:
 
 
 def cleanup_old(days: int = 7, max_rows: int = 10000) -> None:
-    """清理过期日志：超过 N 天 或 单表超 max_rows"""
+    """物理删除旧日志；当前不由后台服务自动调用。"""
     cutoff = time.time() - days * 86400
     with _lock, _get_conn() as conn:
         conn.execute("DELETE FROM api_logs WHERE ts < ?", (cutoff,))
