@@ -46,3 +46,10 @@ logs
 # ===== 上传/临时文件 =====
 uploads/
 tmp/
+
+# ===== admin 后台数据 =====
+backend/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

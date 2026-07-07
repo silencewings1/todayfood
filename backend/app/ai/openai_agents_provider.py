@@ -167,17 +167,36 @@ class OpenAIAgentsProvider(AIProvider):
             timeout=settings.ai.ai_timeout,
         )
 
+    @staticmethod
+    def _log_ai(agent: str, prompt: str, response: str, parsed, *,
+                cost_ms: float, success: bool, fallback: bool, error: str = "") -> None:
+        """写入 AI 调用日志（admin 后台用）"""
+        try:
+            from admin.backend.collector import log_ai_call
+            log_ai_call(
+                agent=agent, prompt=prompt, response=response, parsed=parsed,
+                cost_ms=cost_ms, success=success, fallback=fallback, error=error,
+            )
+        except Exception:
+            pass  # 日志失败不影响主流程
+
     async def parse_note(self, note: str, *, today_seed: int = 0) -> NoteParseResult:
         """AI1: 解析「想吃点啥」自由文本"""
         cfg = settings.ai.agent("note_parser")
         if not cfg.enabled or not note or not note.strip():
             return NoteParseResult(prefs=None, note_raw=note)
 
+        import time
+        start = time.perf_counter()
+        prompt_text = note.strip()
         try:
-            result = await self._run_with_timeout(self._note_agent, note.strip())
+            result = await self._run_with_timeout(self._note_agent, prompt_text)
             text = self._extract_text(result)
             prefs = self._safe_parse_json(text)
+            cost_ms = (time.perf_counter() - start) * 1000
             if prefs is None:
+                self._log_ai("note_parser", prompt_text, text, None,
+                             cost_ms=cost_ms, success=False, fallback=True, error="JSON解析失败")
                 return NoteParseResult(prefs=None, note_raw=note)
             # 兼容字段：null / 缺失都统一成 None
             mood = prefs.get("mood")
@@ -186,15 +205,23 @@ class OpenAIAgentsProvider(AIProvider):
                 mood = None
             if flavor in ("", "null"):
                 flavor = None
+            result_obj = {"mood": mood, "flavor": flavor, "keywords": prefs.get("keywords", [])}
+            self._log_ai("note_parser", prompt_text, text, result_obj,
+                         cost_ms=cost_ms, success=True, fallback=False)
             return NoteParseResult(
                 prefs={"mood": mood, "flavor": flavor, "note": note, "keywords": prefs.get("keywords", [])},
-                note_raw=note,
-                extra={"raw": text},
+                note_raw=note, extra={"raw": text},
             )
         except asyncio.TimeoutError:
+            cost_ms = (time.perf_counter() - start) * 1000
+            self._log_ai("note_parser", prompt_text, "", None,
+                         cost_ms=cost_ms, success=False, fallback=True, error=f"超时{settings.ai.ai_timeout}s")
             logger.warning("AI parse_note 超时(%ss)，回退本地兜底", settings.ai.ai_timeout)
             return NoteParseResult(prefs=None, note_raw=note)
         except Exception as e:
+            cost_ms = (time.perf_counter() - start) * 1000
+            self._log_ai("note_parser", prompt_text, "", None,
+                         cost_ms=cost_ms, success=False, fallback=True, error=str(e))
             logger.warning("AI parse_note 失败，回退本地兜底: %s", e)
             return NoteParseResult(prefs=None, note_raw=note)
 
@@ -204,23 +231,34 @@ class OpenAIAgentsProvider(AIProvider):
         if not cfg.enabled:
             return None
 
+        import time
+        start = time.perf_counter()
+        prompt = (
+            f"菜品：{food.get('title')}（{food.get('category')}）\n"
+            f"默认理由：{food.get('reason')}\n"
+            f"用户心情：{prefs.get('mood') or '未知'}\n"
+            f"口味偏好：{prefs.get('flavor') or '未知'}\n"
+            f"想吃点啥：{prefs.get('note') or '无'}\n"
+            "请基于以上信息写一句个性化推荐理由。"
+        )
         try:
-            prompt = (
-                f"菜品：{food.get('title')}（{food.get('category')}）\n"
-                f"默认理由：{food.get('reason')}\n"
-                f"用户心情：{prefs.get('mood') or '未知'}\n"
-                f"口味偏好：{prefs.get('flavor') or '未知'}\n"
-                f"想吃点啥：{prefs.get('note') or '无'}\n"
-                "请基于以上信息写一句个性化推荐理由。"
-            )
             result = await self._run_with_timeout(self._reason_agent, prompt)
             text = self._extract_text(result)
             text = (text or "").strip().strip('"').strip("「」").strip()
+            cost_ms = (time.perf_counter() - start) * 1000
+            self._log_ai("reason_writer", prompt, text, text,
+                         cost_ms=cost_ms, success=True, fallback=False)
             return text or None
         except asyncio.TimeoutError:
+            cost_ms = (time.perf_counter() - start) * 1000
+            self._log_ai("reason_writer", prompt, "", None,
+                         cost_ms=cost_ms, success=False, fallback=True, error=f"超时{settings.ai.ai_timeout}s")
             logger.warning("AI personalize_reason 超时(%ss)，回退默认 reason", settings.ai.ai_timeout)
             return None
         except Exception as e:
+            cost_ms = (time.perf_counter() - start) * 1000
+            self._log_ai("reason_writer", prompt, "", None,
+                         cost_ms=cost_ms, success=False, fallback=True, error=str(e))
             logger.warning("AI personalize_reason 失败，回退默认 reason: %s", e)
             return None
 
@@ -230,17 +268,31 @@ class OpenAIAgentsProvider(AIProvider):
         if not cfg.enabled:
             return None
 
+        import time
+        start = time.perf_counter()
+        prompt = "请生成一条今日签文。"
         try:
-            result = await self._run_with_timeout(self._sign_agent, "请生成一条今日签文。")
+            result = await self._run_with_timeout(self._sign_agent, prompt)
             text = self._extract_text(result)
             data = self._safe_parse_json(text)
+            cost_ms = (time.perf_counter() - start) * 1000
             if data and data.get("name") and data.get("text"):
+                self._log_ai("sign_generator", prompt, text, data,
+                             cost_ms=cost_ms, success=True, fallback=False)
                 return {"name": data["name"], "level": data.get("level", "中签"), "text": data["text"]}
+            self._log_ai("sign_generator", prompt, text, None,
+                         cost_ms=cost_ms, success=False, fallback=True, error="返回数据不完整")
             return None
         except asyncio.TimeoutError:
+            cost_ms = (time.perf_counter() - start) * 1000
+            self._log_ai("sign_generator", prompt, "", None,
+                         cost_ms=cost_ms, success=False, fallback=True, error=f"超时{settings.ai.ai_timeout}s")
             logger.warning("AI generate_sign 超时(%ss)，回退静态签池", settings.ai.ai_timeout)
             return None
         except Exception as e:
+            cost_ms = (time.perf_counter() - start) * 1000
+            self._log_ai("sign_generator", prompt, "", None,
+                         cost_ms=cost_ms, success=False, fallback=True, error=str(e))
             logger.warning("AI generate_sign 失败，回退静态签池: %s", e)
             return None
 

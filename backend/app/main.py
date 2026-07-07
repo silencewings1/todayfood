@@ -13,12 +13,18 @@
 from __future__ import annotations
 
 import logging
+import sys
 import time
 from pathlib import Path
 
+# 把项目根目录加入 sys.path，让 admin.backend 包可被导入
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.fortune import router as fortune_router
@@ -32,8 +38,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = _PROJECT_ROOT
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
+ADMIN_FRONTEND = PROJECT_ROOT / "admin" / "frontend"
 
 
 def create_app() -> FastAPI:
@@ -64,24 +71,27 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # 请求日志中间件：每次 /api 请求都打印一行明显的日志，便于前端联调观察
+    # 请求日志中间件：每次 /api 请求都打印日志 + 写入 SQLite
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
-        # 跳过 /docs /openapi.json 等非业务请求，减少噪音
         path = request.url.path
-        if not path.startswith("/api"):
+        # 跳过非业务请求（docs/openapi/admin静态）
+        if not path.startswith("/api") and not path.startswith("/admin/api"):
             return await call_next(request)
 
         method = request.method
         client = request.client.host if request.client else "?"
+        ua = request.headers.get("user-agent", "")
         start = time.perf_counter()
 
-        # POST 打印请求体（便于看到前端传了什么偏好）
+        # POST 读取请求体（便于看到前端传了什么偏好）
         body_preview = ""
         if method == "POST":
             try:
                 raw = await request.body()
-                body_preview = raw.decode("utf-8")[:200]
+                body_preview = raw.decode("utf-8")[:500]
+                # 把 body 塞回 request，供下游使用
+                request._body = raw
             except Exception:
                 body_preview = "<read failed>"
 
@@ -91,13 +101,48 @@ def create_app() -> FastAPI:
         logger.info(
             "👉 %s %s <- %s -> %d (%.1fms)%s",
             method, path, client, response.status_code, cost_ms,
-            f" body={body_preview}" if body_preview else "",
+            f" body={body_preview[:200]}" if body_preview else "",
         )
+
+        # 写入 SQLite（失败不影响主流程）
+        try:
+            from admin.backend.collector import log_api_call
+            # 读取响应体摘要（仅对小响应安全）
+            resp_summary = ""
+            if hasattr(response, 'body') and response.body:
+                try:
+                    resp_summary = response.body.decode("utf-8")[:300]
+                except Exception:
+                    pass
+            log_api_call(
+                method=method, path=path, client=client,
+                status=response.status_code, cost_ms=cost_ms,
+                req_body=body_preview, resp_body=resp_summary, ua=ua,
+            )
+        except Exception as e:
+            logger.debug("写入 admin 日志失败: %s", e)
+
         return response
 
     # 路由注册
     app.include_router(meta_router)
     app.include_router(fortune_router)
+
+    # admin 路由
+    try:
+        from admin.backend.router import router as admin_router
+        app.include_router(admin_router)
+    except Exception as e:
+        logger.warning("admin 路由加载失败: %s", e)
+
+    # admin 前端静态文件挂载
+    if ADMIN_FRONTEND.exists():
+        app.mount("/admin/static", StaticFiles(directory=str(ADMIN_FRONTEND)), name="admin-static")
+
+        @app.get("/admin", include_in_schema=False)
+        @app.get("/admin/", include_in_schema=False)
+        def serve_admin():
+            return FileResponse(str(ADMIN_FRONTEND / "index.html"))
 
     # 生产部署：后端直接托管 Vite 构建产物，开发环境无 dist 时跳过
     if FRONTEND_DIST.exists():
