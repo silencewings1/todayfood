@@ -57,8 +57,10 @@ defineProps({
 }
 
 .date-text {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   color: var(--ink-soft);
   font-weight: 500;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
 }
 </style>

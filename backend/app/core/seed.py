@@ -4,28 +4,30 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 from zoneinfo import ZoneInfo
 from typing import Callable
+
+from app.core.lunar import lunar_date_text
 
 
 def today_info(tz: str = "Asia/Shanghai") -> dict:
     """获取当日信息
 
-    返回结构与前端 todayInfo() 一致：
+    返回结构：
         {
-          "text": "2026 年 7 月 6 日 · 周一",
-          "short": "7 月 6 日",
-          "week": "一",
-          "seed": 20260706,
-          "date": "2026-07-06"   # 后端新增，便于缓存键
+          "text": "2026 年 7 月 8 日 · 周三",
+          "short": "丙午年 甲午月 廿四",  # 农历干支日期
+          "week": "三",
+          "seed": 20260708,
+          "date": "2026-07-08"
         }
     """
     now = datetime.now(ZoneInfo(tz))
     week_zh = ["一", "二", "三", "四", "五", "六", "日"][now.weekday()]
     return {
         "text": f"{now.year} 年 {now.month} 月 {now.day} 日 · 周{week_zh}",
-        "short": f"{now.month} 月 {now.day} 日",
+        "short": lunar_date_text(date(now.year, now.month, now.day)),
         "week": week_zh,
         "seed": now.year * 10000 + now.month * 100 + now.day,
         "date": f"{now.year:04d}-{now.month:02d}-{now.day:02d}",
