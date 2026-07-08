@@ -34,3 +34,6 @@ class DummyProvider(AIProvider):
 
     async def generate_sign(self, *, today_seed: int = 0) -> Optional[dict]:
         return None
+
+    async def pick_food(self, context: dict, *, today_seed: int = 0) -> Optional[dict]:
+        return None

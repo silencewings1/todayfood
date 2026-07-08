@@ -124,6 +124,32 @@ class OpenAIAgentsProvider(AIProvider):
             model_cls=model_cls,
         )
 
+        self._food_picker_agent = self._build_agent(
+            name="food-picker",
+            agent_key="food_picker",
+            instructions=(
+                "你是「今日宜吃」的 AI 厨师，负责结合黄历为用户推荐一道菜。\n"
+                "你需要返回严格的 JSON，字段如下：\n"
+                '{\n'
+                '  "title": "菜品名（2-8字）",\n'
+                '  "category": "分类（主食/汤面/小炒/凉菜/甜品/饮品类之一）",\n'
+                '  "reason": "推荐理由（30-60字，结合黄历宜忌和用户偏好，活泼可爱）",\n'
+                '  "cookTime": "烹饪时长（如 30 分钟）",\n'
+                '  "difficulty": "难度（简单/中等/偏难）",\n'
+                '  "ingredients": ["食材1 用量", "食材2 用量", ...],\n'
+                '  "steps": ["步骤1", "步骤2", ...],\n'
+                '  "tip": "一个小贴士（10-30字）"\n'
+                '}\n'
+                "要求：\n"
+                "1. 菜品要结合黄历宜忌（如宜辛辣就推荐辣菜，忌油腻就推荐清淡的）\n"
+                "2. 食材用量要具体（如 番茄 2个、鸡蛋 3个）\n"
+                "3. 步骤 4-8 步，每步简明扼要\n"
+                "4. 不要推荐与 exclude_title 相同的菜\n"
+                "5. 只返回 JSON，不要任何额外说明"
+            ),
+            model_cls=model_cls,
+        )
+
     def _build_agent(self, *, name: str, agent_key: str, instructions: str, model_cls):
         """构造单个 Agent
 
@@ -294,6 +320,90 @@ class OpenAIAgentsProvider(AIProvider):
             self._log_ai("sign_generator", prompt, "", None,
                          cost_ms=cost_ms, success=False, fallback=True, error=str(e))
             logger.warning("AI generate_sign 失败，回退静态签池: %s", e)
+            return None
+
+    async def pick_food(self, context: dict, *, today_seed: int = 0) -> Optional[dict]:
+        """AI4: AI 选菜（含理由 + 做法 + 黄历结合）"""
+        cfg = settings.ai.agent("food_picker")
+        if not cfg.enabled:
+            return None
+
+        import time
+        start = time.perf_counter()
+
+        # 构造 prompt，把黄历上下文和用户偏好都传给 AI
+        lines = [
+            f"今日日期：{context.get('date_text', '')}",
+            f"农历：{context.get('lunar_text', '')}",
+            f"黄历宜：{'、'.join(context.get('almanac_yi', []))}",
+            f"黄历忌：{'、'.join(context.get('almanac_ji', []))}",
+            f"幸运口味：{context.get('lucky_flavor', '')}",
+            f"幸运颜色：{context.get('lucky_color', '')}",
+            f"食神方位：{context.get('lucky_direction', '')}",
+        ]
+        mood = context.get('mood')
+        flavor = context.get('flavor')
+        note = context.get('note')
+        if mood:
+            lines.append(f"用户心情：{mood}")
+        if flavor:
+            lines.append(f"口味偏好：{flavor}")
+        if note:
+            lines.append(f"想吃点啥：{note}")
+        exclude = context.get('exclude_title')
+        if exclude:
+            lines.append(f"排除菜品（不要推荐相同的）：{exclude}")
+        lines.append("请结合以上黄历信息推荐一道菜，返回 JSON。")
+        prompt = "\n".join(lines)
+
+        try:
+            result = await self._run_with_timeout(self._food_picker_agent, prompt)
+            text = self._extract_text(result)
+            data = self._safe_parse_json(text)
+            cost_ms = (time.perf_counter() - start) * 1000
+
+            if not data or not data.get("title"):
+                self._log_ai("food_picker", prompt, text, None,
+                             cost_ms=cost_ms, success=False, fallback=True, error="返回数据不完整")
+                return None
+
+            # 补全 FoodItem 所需的全部字段
+            title = data["title"]
+            food = {
+                "id": title.replace(" ", "-").lower(),
+                "title": title,
+                "category": data.get("category", "主食"),
+                "tags": {"mood": [], "scene": [], "budget": [], "flavor": []},
+                "stars": [4, 5, 5],
+                "reason": data.get("reason", "今日推荐"),
+                "sign": "",
+                "signName": "",
+                "level": "",
+                "luckyFlavor": context.get("lucky_flavor", ""),
+                "luckyColor": context.get("lucky_color", ""),
+                "direction": context.get("lucky_direction", ""),
+                "cookTime": data.get("cookTime", ""),
+                "difficulty": data.get("difficulty", "简单"),
+                "ingredients": data.get("ingredients", []),
+                "steps": data.get("steps", []),
+                "tip": data.get("tip", ""),
+            }
+
+            self._log_ai("food_picker", prompt, text, food,
+                         cost_ms=cost_ms, success=True, fallback=False)
+            return food
+
+        except asyncio.TimeoutError:
+            cost_ms = (time.perf_counter() - start) * 1000
+            self._log_ai("food_picker", prompt, "", None,
+                         cost_ms=cost_ms, success=False, fallback=True, error=f"超时{settings.ai.ai_timeout}s")
+            logger.warning("AI pick_food 超时(%ss)，回退本地选菜", settings.ai.ai_timeout)
+            return None
+        except Exception as e:
+            cost_ms = (time.perf_counter() - start) * 1000
+            self._log_ai("food_picker", prompt, "", None,
+                         cost_ms=cost_ms, success=False, fallback=True, error=str(e))
+            logger.warning("AI pick_food 失败，回退本地选菜: %s", e)
             return None
 
     # ===== 内部工具 =====

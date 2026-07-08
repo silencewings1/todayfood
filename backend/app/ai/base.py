@@ -77,3 +77,22 @@ class AIProvider(ABC):
         返回:
             {"name": str, "level": str, "text": str}；None 表示放弃，上层用静态签池
         """
+
+    @abstractmethod
+    async def pick_food(self, context: dict, *, today_seed: int = 0) -> Optional[dict]:
+        """AI4: AI 选菜（含理由 + 做法 + 黄历结合）
+
+        入参:
+            context: 选菜上下文，包含：
+                - date_text: 公历日期文本，如 "2026 年 7 月 8 日 · 周三"
+                - lunar_text: 农历干支日期，如 "丙午年 甲午月 廿四"
+                - almanac_yi: 黄历宜列表
+                - almanac_ji: 黄历忌列表
+                - lucky_flavor / lucky_color / lucky_direction: 幸运三件套
+                - mood / flavor / note: 用户偏好
+                - exclude_title: 当前菜品名（避免重复）
+            today_seed: 当日种子
+
+        返回:
+            完整菜品 dict（字段同 FoodItem），None 表示放弃，上层走本地兜底
+        """

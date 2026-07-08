@@ -226,6 +226,16 @@ class Settings:
         str(app_toml.get("app", {}).get("cache_enabled", True))
     ).lower() in ("1", "true", "yes")
 
+    # ===== AI 选菜频率限制 =====
+    rate_limit_window_sec: int = int(os.getenv(
+        "RATE_LIMIT_WINDOW_SEC",
+        app_toml.get("app", {}).get("rate_limit_window_sec", 60)
+    ))
+    rate_limit_max_calls: int = int(os.getenv(
+        "RATE_LIMIT_MAX_CALLS",
+        app_toml.get("app", {}).get("rate_limit_max_calls", 5)
+    ))
+
     # ===== 调度 =====
     scheduler: SchedulerConfig = field(default_factory=_build_scheduler_config)
 

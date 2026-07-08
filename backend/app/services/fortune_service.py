@@ -1,16 +1,16 @@
 """食历服务层
 
-实现 TASKS.md 中的两个核心接口业务逻辑：
-- get_today_fortune(): GET /api/fortune/today（自动任务 A1+A2）
+实现两个核心接口业务逻辑：
+- get_today_fortune(): GET /api/fortune/today（页面首次加载）
 - draw_food(): POST /api/fortune/draw（按钮触发：再开一签/选一餐）
 
 设计要点：
 1. 「今日食历」内容（黄历宜忌 + 干饭宜忌 + 幸运三件套 + 签文）仅依赖 today.seed，
-   每日固定，对所有用户一致 —— 与前端修复后的 dailyExtras 行为对齐
-2. 「今日菜品」也按 today.seed 稳定，作为页面首次加载默认推荐
-3. 「再开一签」按用户偏好 + 当前时间盐抽新菜，不与 excludeId 重复
-4. AI 接入点预留：draw_food 中当 preferences.note 非空时调用 AI 解析
-5. 当日结果按 date 缓存，避免重复计算
+   每日固定，对所有用户一致
+2. 「今日菜品」首次加载时从数据库读取最近一条 AI 菜品，无则用静态池兜底
+3. 「再开一签」优先调用 AI 选菜（含理由+做法+黄历结合），结果存入数据库
+4. 频率限制：window_sec 秒内最多 max_calls 次 AI 调用，超限走数据库已有菜品
+5. 当日食历结果按 date 缓存，避免重复计算
 """
 from __future__ import annotations
 
@@ -35,13 +35,24 @@ from app.schemas.fortune import (
     DrawResponse,
     FoodItem,
     LuckySet,
-    SignObj,
     TodayInfo,
     TodayResponse,
 )
 from app.services.cache import daily_cache
+from app.services.food_store import (
+    get_latest_food,
+    get_random_food,
+    save_food,
+)
+from app.services.rate_limiter import rate_limiter
 
 logger = logging.getLogger(__name__)
+
+# 初始化频率限制器配置
+rate_limiter.update_config(
+    settings.rate_limit_window_sec,
+    settings.rate_limit_max_calls,
+)
 
 
 def _build_daily_extras(seed: int) -> DailyExtras:
@@ -63,10 +74,30 @@ def _build_daily_extras(seed: int) -> DailyExtras:
     )
 
 
+def _build_ai_context(today: dict, extras: DailyExtras, prefs: dict,
+                      exclude_title: Optional[str] = None) -> dict:
+    """构造 AI 选菜上下文（黄历 + 用户偏好）"""
+    lucky = extras.lucky
+    return {
+        "date_text": today["text"],
+        "lunar_text": today["short"],
+        "almanac_yi": extras.almanacYi,
+        "almanac_ji": extras.almanacJi,
+        "lucky_flavor": lucky.flavor,
+        "lucky_color": lucky.color,
+        "lucky_direction": lucky.direction,
+        "mood": prefs.get("mood"),
+        "flavor": prefs.get("flavor"),
+        "note": (prefs.get("note") or "").strip() or None,
+        "exclude_title": exclude_title,
+    }
+
+
 def get_today_fortune() -> TodayResponse:
     """GET /api/fortune/today 业务实现
 
     返回「今日食历」+「今日菜品」，按 date 缓存。
+    今日菜品优先从数据库加载最近一条 AI 菜品，无则用静态池。
     """
     today = today_info(settings.timezone)
     cache_key = f"today:{today['date']}"
@@ -76,8 +107,13 @@ def get_today_fortune() -> TodayResponse:
         if cached is not None:
             return cached
 
-    today_food = pick_today_food(today["seed"])
     extras = _build_daily_extras(today["seed"])
+
+    # 优先从数据库加载最近一条 AI 菜品
+    today_food = get_latest_food()
+    if today_food is None:
+        # 数据库为空，用静态池兜底
+        today_food = pick_today_food(today["seed"])
 
     resp = TodayResponse(
         today=TodayInfo(**today),
@@ -98,50 +134,56 @@ async def draw_food(
     """POST /api/fortune/draw 业务实现
 
     流程：
-    1. 若 preferences.note 非空且 AI 启用 → 调用 AI1 解析 note 为结构化 prefs
-       否则直接用 preferences 本身
-    2. 若有任意偏好 → pick_by_tags 加权选菜
-       否则 pick_any 完全随机
+    1. 构造黄历上下文
+    2. 检查频率限制
+       - 未超限且 AI 启用 → 调用 AI pick_food（含理由+做法+黄历结合），存入数据库
+       - 超限 → 从数据库随机取一道已有菜品
+       - AI 失败 → 回退静态池
     3. 排除 exclude_id（若结果与之相同，强制重抽一个不同的）
-    4. （可选）AI2 个性化 reason
     """
     prefs = preferences or {}
     today = today_info(settings.timezone)
-    ai_used = False
+    extras = _build_daily_extras(today["seed"])
 
-    # AI1: note 解析
-    note = (prefs.get("note") or "").strip()
+    # 查当前菜品名（用于 AI 排除）
+    exclude_title = None
+    if exclude_id:
+        # 从数据库或静态池查找当前菜品名
+        from app.data.foods import food_pool
+        for f in food_pool:
+            if f["id"] == exclude_id:
+                exclude_title = f["title"]
+                break
+
     ai = get_ai_provider()
-    if note and ai.enabled:
-        parsed = await ai.parse_note(note, today_seed=today["seed"])
-        if parsed.prefs:
-            # 合并：AI 解析出的 mood/flavor 覆盖前端传入的（更准确）
-            merged = dict(prefs)
-            if parsed.prefs.get("mood"):
-                merged["mood"] = parsed.prefs["mood"]
-            if parsed.prefs.get("flavor"):
-                merged["flavor"] = parsed.prefs["flavor"]
-            merged["note"] = note
-            merged["keywords"] = parsed.prefs.get("keywords", [])
-            prefs = merged
+    ai_used = False
+    rate_limited = False
+    food_dict: Optional[dict] = None
+
+    # 检查频率限制
+    if ai.enabled and not rate_limiter.check():
+        # 未超限，调用 AI 选菜
+        context = _build_ai_context(today, extras, prefs, exclude_title)
+        food_dict = await ai.pick_food(context, today_seed=today["seed"])
+        if food_dict:
+            # 保存到数据库（title 重复时更新为最新记录）
+            save_food(food_dict, today["date"])
+            # 清除今日缓存，使下次 GET /today 能加载到最新菜品
+            daily_cache.clear()
             ai_used = True
 
-    # 选菜
-    have_any = any(v for k, v in prefs.items() if k in ("mood", "flavor"))
-    if have_any:
-        food = pick_by_tags(prefs, today_seed=today["seed"])
-        # 兜底：与当前相同则随机一个不同的
-        if exclude_id and food["id"] == exclude_id:
-            food = pick_any(exclude_id)
-    else:
-        food = pick_any(exclude_id)
+    elif ai.enabled:
+        # 频率超限，从数据库取已有菜品
+        rate_limited = True
+        logger.info("AI 选菜频率超限，从数据库取已有菜品")
+        food_dict = get_random_food(exclude_title)
 
-    # AI2: 个性化 reason（可选）
-    food_dict = dict(food)
-    if ai.enabled:
-        new_reason = await ai.personalize_reason(food_dict, prefs, today_seed=today["seed"])
-        if new_reason:
-            food_dict["reason"] = new_reason
-            ai_used = True
+    # AI 失败或未启用或数据库也为空 → 静态池兜底
+    if food_dict is None:
+        food_dict = pick_any(exclude_id)
 
-    return DrawResponse(food=FoodItem(**food_dict), aiUsed=ai_used)
+    return DrawResponse(
+        food=FoodItem(**food_dict),
+        aiUsed=ai_used,
+        rateLimited=rate_limited,
+    )

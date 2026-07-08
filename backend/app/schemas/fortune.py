@@ -102,4 +102,5 @@ class DrawResponse(BaseModel):
     返回一道新抽到的菜品。reason 可被 AI 个性化覆盖。
     """
     food: FoodItem
-    aiUsed: bool = Field(False, description="本次是否走了 AI 解析路径")
+    aiUsed: bool = Field(False, description="本次是否走了 AI 选菜路径")
+    rateLimited: bool = Field(False, description="是否被频率限制（走数据库兜底）")

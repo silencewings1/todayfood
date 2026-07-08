@@ -61,3 +61,9 @@ temperature = 0.8   # 高温度，文案更有创意
 enabled = false
 model = ""
 temperature = 0.9
+
+[ai.agents.food_picker]
+# AI4: AI 选菜（结合黄历推荐菜品，含理由+做法）
+enabled = true
+model = ""
+temperature = 0.7
