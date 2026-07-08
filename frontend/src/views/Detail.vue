@@ -82,7 +82,7 @@
     <!-- 食神所选 结果卡 -->
     <section class="page-section" v-if="result">
       <div class="card result-card">
-        <DrawOverlay :visible="showOverlay" @finished="onAnimFinished" />
+        <DrawOverlay :visible="showOverlay" :promise="overlayPromise" @finished="onAnimFinished" />
         <div class="result-content" :class="{ hidden: showOverlay }">
           <div class="food-head">
             <span class="food-cat">{{ result.category }}</span>
@@ -162,6 +162,7 @@ import RecipeSheet from '@/components/RecipeSheet.vue'
 const { current, state, drawing, redraw } = useFortune()
 const showOverlay = ref(false)
 const showRecipe = ref(false)
+const overlayPromise = ref(null)
 let pendingRedraw = null
 
 // 菜品 SVG 图标，无匹配时用 tomato-beef 兜底
@@ -254,16 +255,16 @@ function onPick(group, value) {
 
 function onPickMe() {
   if (!canPick.value || drawing.value) return
-  showOverlay.value = true
-  // 并发发起抽签请求（redraw 内部已排除当前菜品，确保换新）
+  // 并发发起抽签请求，把 promise 传给 overlay，动画会等待其返回
   pendingRedraw = redraw()
+  overlayPromise.value = pendingRedraw
+  showOverlay.value = true
 }
 
-async function onAnimFinished() {
-  if (pendingRedraw) {
-    try { await pendingRedraw } catch (e) { /* 忽略，兜底保持旧值 */ }
-    pendingRedraw = null
-  }
+function onAnimFinished() {
+  // 动画结束时数据已拿到（overlay 已等待 promise 完成）
+  pendingRedraw = null
+  overlayPromise.value = null
   showOverlay.value = false
 }
 </script>

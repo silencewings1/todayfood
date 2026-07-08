@@ -39,33 +39,87 @@
 
 <script setup>
 import { ref, watch } from 'vue'
+import { DRAW_MIN_DURATION } from '@/config'
 
 const props = defineProps({
-  visible: { type: Boolean, default: false }
+  visible: { type: Boolean, default: false },
+  /**
+   * 关联的 API 请求 Promise（可选）。
+   * 若提供：shake 阶段会一直持续到该 Promise 完成（resolve/reject 均算完成）；
+   * 若不提供：仅按最短时长结束。
+   */
+  promise: { type: Promise, default: null }
 })
 const emit = defineEmits(['finished'])
 
 const phase = ref('enter')
-let timer = null
+
+// enter / burst 阶段固定时长，shake 阶段动态延长
+const ENTER_MS = 400
+const BURST_MS = 700
+// 从 run() 开始算，最早可进入 burst 的时间点（预留 burst 时长，保证总时长 >= DRAW_MIN_DURATION）
+const MIN_TOTAL_BEFORE_BURST = Math.max(ENTER_MS, DRAW_MIN_DURATION - BURST_MS)
+
+let timers = []
+let startTime = 0
+let apiDone = false
+
+function clearAllTimers() {
+  timers.forEach(t => clearTimeout(t))
+  timers = []
+}
+
+/** 尝试从 shake 推进到 burst：需要「最短时长到达」且「API 返回」两个条件同时满足 */
+function tryEnterBurst() {
+  if (phase.value !== 'shake') return
+  const elapsed = Date.now() - startTime
+  if (elapsed >= MIN_TOTAL_BEFORE_BURST && apiDone) {
+    enterBurst()
+  } else if (apiDone) {
+    // API 已返回，但最短时长未到 → 等待剩余时间
+    const remaining = Math.max(0, MIN_TOTAL_BEFORE_BURST - elapsed)
+    timers.push(setTimeout(() => {
+      if (phase.value === 'shake') enterBurst()
+    }, remaining))
+  }
+  // 若 API 未返回，等其 resolve/reject 回调里再次调用 tryEnterBurst
+}
+
+function enterBurst() {
+  if (phase.value !== 'shake') return
+  phase.value = 'burst'
+  timers.push(setTimeout(() => {
+    emit('finished')
+  }, BURST_MS))
+}
 
 function run() {
+  clearAllTimers()
   phase.value = 'enter'
-  clearTimeout(timer)
-  timer = setTimeout(() => {
+  apiDone = false
+  startTime = Date.now()
+
+  // 监听 API Promise（resolve/reject 均视为完成）
+  const p = props.promise
+  if (p && typeof p.then === 'function') {
+    p.then(() => { apiDone = true; tryEnterBurst() })
+     .catch(() => { apiDone = true; tryEnterBurst() })
+  } else {
+    // 没有关联请求，直接视为完成
+    apiDone = true
+  }
+
+  // enter → shake
+  timers.push(setTimeout(() => {
     phase.value = 'shake'
-    timer = setTimeout(() => {
-      phase.value = 'burst'
-      timer = setTimeout(() => {
-        emit('finished')
-      }, 700)
-    }, 1400)
-  }, 400)
+    tryEnterBurst()
+  }, ENTER_MS))
 }
 
 watch(() => props.visible, (v) => {
   if (v) run()
   else {
-    clearTimeout(timer)
+    clearAllTimers()
     phase.value = 'enter'
   }
 })
@@ -113,7 +167,7 @@ watch(() => props.visible, (v) => {
   transform-origin: bottom center;
 }
 .tube-wrap.shake {
-  animation: tubeShake 0.32s linear 0s 5;
+  animation: tubeShake 0.32s linear infinite;
 }
 .tube-wrap.pop {
   animation: tubePop 0.4s cubic-bezier(0.2, 0.8, 0.3, 1.2) forwards;

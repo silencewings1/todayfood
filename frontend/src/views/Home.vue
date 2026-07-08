@@ -49,7 +49,7 @@
     <!-- 菜品卡 -->
     <section class="page-section" v-if="food">
       <div class="food-card card">
-        <DrawOverlay :visible="showOverlay" @finished="onAnimFinished" />
+        <DrawOverlay :visible="showOverlay" :promise="overlayPromise" @finished="onAnimFinished" />
         <div class="food-content" :class="{ hidden: showOverlay }">
           <div class="food-head">
             <span class="food-cat">{{ food.category }}</span>
@@ -123,6 +123,7 @@ const { today, current, dailyExtras, drawing, redraw, buildShareText } = useFort
 const food = computed(() => current.value)
 const showOverlay = ref(false)
 const showRecipe = ref(false)
+const overlayPromise = ref(null)
 let pendingRedraw = null
 
 // 菜品 SVG 图标，无匹配时用 tomato-beef 兜底
@@ -146,17 +147,16 @@ const extras = computed(() => dailyExtras.value || {
 
 async function onRedraw() {
   if (drawing.value) return
-  showOverlay.value = true
-  // 同时发起抽签请求（已预留后端接口），不阻塞动画
+  // 同时发起抽签请求，把 promise 传给 overlay，动画会等待其返回
   pendingRedraw = redraw()
+  overlayPromise.value = pendingRedraw
+  showOverlay.value = true
 }
 
-async function onAnimFinished() {
-  // 动画结束时，确保数据已拿到（redraw 已经在 onRedraw 里并发发起）
-  if (pendingRedraw) {
-    try { await pendingRedraw } catch (e) { /* 忽略错误，兜底保持旧值 */ }
-    pendingRedraw = null
-  }
+function onAnimFinished() {
+  // 动画结束时数据已拿到（overlay 已等待 promise 完成）
+  pendingRedraw = null
+  overlayPromise.value = null
   showOverlay.value = false
 }
 

@@ -18,4 +18,11 @@ export const API = {
   DRAW: `${API_BASE}/fortune/draw`,
 }
 
-export default { API }
+/**
+ * 摇签动画最短总时长（毫秒）
+ * 不管走不走 AI 调用，摇签动画至少持续这么久；
+ * 若 AI 调用耗时更长，则摇动状态会一直保持到后端返回。
+ */
+export const DRAW_MIN_DURATION = 2500
+
+export default { API, DRAW_MIN_DURATION }
