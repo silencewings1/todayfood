@@ -33,7 +33,7 @@ timezone = "Asia/Shanghai"
 cache_enabled = true
 # AI 选菜频率限制：window_sec 秒内最多 max_calls 次
 # 超过后走数据库已有菜品，窗口过期后自动解禁
-rate_limit_window_sec = 60
+rate_limit_window_sec = 300
 rate_limit_max_calls = 5
 
 # ===== 每日刷新调度 =====
