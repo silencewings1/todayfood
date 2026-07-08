@@ -93,6 +93,20 @@ def _build_ai_context(today: dict, extras: DailyExtras, prefs: dict,
     }
 
 
+def _fill_sign_fields(food: dict, extras: DailyExtras) -> None:
+    """补全菜品的签文字段
+
+    AI 生成的菜品没有签文（sign/signName/level 为空），
+    用当日黄历签文补全。静态池菜品已有签文则跳过。
+    """
+    if not food.get("signName"):
+        food["signName"] = extras.signName
+    if not food.get("level"):
+        food["level"] = extras.signLevel
+    if not food.get("sign"):
+        food["sign"] = extras.signText
+
+
 def get_today_fortune() -> TodayResponse:
     """GET /api/fortune/today 业务实现
 
@@ -114,6 +128,9 @@ def get_today_fortune() -> TodayResponse:
     if today_food is None:
         # 数据库为空，用静态池兜底
         today_food = pick_today_food(today["seed"])
+
+    # AI 生成的菜品没有签文字段，用当日签文补全
+    _fill_sign_fields(today_food, extras)
 
     resp = TodayResponse(
         today=TodayInfo(**today),
@@ -181,6 +198,9 @@ async def draw_food(
     # AI 失败或未启用或数据库也为空 → 静态池兜底
     if food_dict is None:
         food_dict = pick_any(exclude_id)
+
+    # AI 生成的菜品没有签文字段，用当日签文补全
+    _fill_sign_fields(food_dict, extras)
 
     return DrawResponse(
         food=FoodItem(**food_dict),
