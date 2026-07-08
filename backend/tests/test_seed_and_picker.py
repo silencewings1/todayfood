@@ -7,7 +7,6 @@ from __future__ import annotations
 from app.core.picker import (
     pick_any,
     pick_avoid,
-    pick_by_tags,
     pick_lucky,
     pick_sign_obj,
     pick_suitable,
@@ -82,18 +81,6 @@ def test_pick_lucky_has_three_fields():
     lucky = pick_lucky(20260706)
     assert set(lucky.keys()) == {"flavor", "color", "direction"}
     assert all(isinstance(v, str) and v for v in lucky.values())
-
-
-def test_pick_by_tags_prefers_matching():
-    """偏好命中时应倾向于返回匹配菜品"""
-    # hungry + spicy 都命中的菜品是 spicy-pot / sour-noodle
-    matched_ids = set()
-    for _ in range(20):
-        f = pick_by_tags({"mood": "spicy", "flavor": "spicy"}, salt_seed=42)
-        matched_ids.add(f["id"])
-    # 多次抽样下应至少出现一个 spicy 命中菜
-    spicy_foods = [f for f in food_pool if "spicy" in f["tags"]["flavor"] and "spicy" in f["tags"]["mood"]]
-    assert any(f["id"] in matched_ids for f in spicy_foods)
 
 
 def test_pick_any_excludes_id():

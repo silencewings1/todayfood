@@ -6,13 +6,12 @@
 
 协议通过 config/ai.toml 的 ai.api_protocol 字段切换，也支持环境变量 AI_PROTOCOL 覆盖。
 
-三个 AI 接入点（对应 TASKS.md）：
-- AI1 parse_note:      note_parser agent，自由文本解析为结构化偏好 JSON
-- AI2 personalize_reason: reason_writer agent，生成个性化推荐理由
-- AI3 generate_sign:   sign_generator agent，动态生成签文
+AI 接入点：
+- pick_food:      food_picker agent，结合黄历推荐菜品（含理由+做法+食材+步骤）
+- generate_sign:  sign_generator agent，动态生成签文（可选，默认禁用）
 
 每个 agent 可在 ai.toml 中独立开关、配置模型与温度。
-所有方法均带异常兜底，失败返回 None / 空结果，不影响主流程。
+所有方法均带异常兜底，失败返回 None，不影响主流程。
 """
 from __future__ import annotations
 
@@ -21,7 +20,7 @@ import json
 import logging
 from typing import Optional
 
-from app.ai.base import AIProvider, NoteParseResult
+from app.ai.base import AIProvider
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -80,50 +79,7 @@ class OpenAIAgentsProvider(AIProvider):
             protocol_desc, ai.base_url or "(OpenAI 官方)", ai.model,
         )
 
-        # 构造默认 model 实例（全局模型）
-        self._default_model = model_cls(model=ai.model, openai_client=self._client)
-
-        # 构造三个独立 Agent
-        # 每个 Agent 的 model 可单独覆盖，temperature 单独配置
-        self._note_agent = self._build_agent(
-            name="note-parser",
-            agent_key="note_parser",
-            instructions=(
-                "你是一个美食偏好解析助手。用户会输入一段自由文本描述想吃的食物，"
-                "你需要解析为结构化偏好。返回严格的 JSON：\n"
-                '{"mood": "tired|hungry|sad|happy|busy|spicy|no-appetite|treat|null", '
-                '"flavor": "light|spicy|sour-sweet|sour-spicy|savory|heavy|milky|fresh|null", '
-                '"keywords": ["..."]}\n'
-                "mood/flavor 找不到就给 null。keywords 是从文本中提取的食物关键词。"
-                "只返回 JSON，不要任何额外说明。"
-            ),
-            model_cls=model_cls,
-        )
-
-        self._reason_agent = self._build_agent(
-            name="reason-writer",
-            agent_key="reason_writer",
-            instructions=(
-                "你是「今日宜吃」小程序的文案。根据用户心情和偏好，"
-                "为指定菜品写一句 30-50 字的个性化推荐理由，语气活泼可爱。"
-                "只输出理由文案本身，不要标题、不要引号。"
-            ),
-            model_cls=model_cls,
-        )
-
-        self._sign_agent = self._build_agent(
-            name="sign-generator",
-            agent_key="sign_generator",
-            instructions=(
-                "你是「今日宜吃」的签文生成器。生成一条当日限定签文，"
-                "包含 name（4-6 字短签名，含\"签\"字）、level（上上签/上签/中吉/中签）、"
-                "text（20-40 字签文内容，活泼可爱风）。返回严格 JSON："
-                '{"name":"...","level":"...","text":"..."}'
-                "只返回 JSON。"
-            ),
-            model_cls=model_cls,
-        )
-
+        # 构造 food_picker agent（核心：选菜+理由+做法）
         self._food_picker_agent = self._build_agent(
             name="food-picker",
             agent_key="food_picker",
@@ -150,18 +106,25 @@ class OpenAIAgentsProvider(AIProvider):
             model_cls=model_cls,
         )
 
-    def _build_agent(self, *, name: str, agent_key: str, instructions: str, model_cls):
-        """构造单个 Agent
+        # 构造 sign_generator agent（可选：动态签文）
+        self._sign_agent = self._build_agent(
+            name="sign-generator",
+            agent_key="sign_generator",
+            instructions=(
+                "你是「今日宜吃」的签文生成器。生成一条当日限定签文，"
+                "包含 name（4-6 字短签名，含\"签\"字）、level（上上签/上签/中吉/中签）、"
+                "text（20-40 字签文内容，活泼可爱风）。返回严格 JSON："
+                '{"name":"...","level":"...","text":"..."}'
+                "只返回 JSON。"
+            ),
+            model_cls=model_cls,
+        )
 
-        - 读取 ai.toml 中 [ai.agents.<agent_key>] 的配置
-        - enabled=false 时仍构造（但上层调用前会检查 enabled）
-        - model 为空时用全局默认 model
-        - temperature 通过 model_settings 传入
-        """
+    def _build_agent(self, *, name: str, agent_key: str, instructions: str, model_cls):
+        """构造单个 Agent（读取 ai.toml 中对应 agent 配置）"""
         from agents import Agent, ModelSettings
 
         cfg = settings.ai.agent(agent_key)
-        # agent 级别 model 覆盖全局
         model_instance = model_cls(
             model=cfg.model or settings.ai.model,
             openai_client=self._client,
@@ -183,10 +146,7 @@ class OpenAIAgentsProvider(AIProvider):
         return True
 
     async def _run_with_timeout(self, agent, prompt: str):
-        """带超时地执行 Agent
-
-        超过 ai.ai_timeout 秒未返回，抛出 TimeoutError，由调用方 catch 后回退本地。
-        """
+        """带超时地执行 Agent"""
         from agents import Runner
         return await asyncio.wait_for(
             Runner.run(agent, prompt),
@@ -204,126 +164,10 @@ class OpenAIAgentsProvider(AIProvider):
                 cost_ms=cost_ms, success=success, fallback=fallback, error=error,
             )
         except Exception:
-            pass  # 日志失败不影响主流程
-
-    async def parse_note(self, note: str, *, today_seed: int = 0) -> NoteParseResult:
-        """AI1: 解析「想吃点啥」自由文本"""
-        cfg = settings.ai.agent("note_parser")
-        if not cfg.enabled or not note or not note.strip():
-            return NoteParseResult(prefs=None, note_raw=note)
-
-        import time
-        start = time.perf_counter()
-        prompt_text = note.strip()
-        try:
-            result = await self._run_with_timeout(self._note_agent, prompt_text)
-            text = self._extract_text(result)
-            prefs = self._safe_parse_json(text)
-            cost_ms = (time.perf_counter() - start) * 1000
-            if prefs is None:
-                self._log_ai("note_parser", prompt_text, text, None,
-                             cost_ms=cost_ms, success=False, fallback=True, error="JSON解析失败")
-                return NoteParseResult(prefs=None, note_raw=note)
-            # 兼容字段：null / 缺失都统一成 None
-            mood = prefs.get("mood")
-            flavor = prefs.get("flavor")
-            if mood in ("", "null"):
-                mood = None
-            if flavor in ("", "null"):
-                flavor = None
-            result_obj = {"mood": mood, "flavor": flavor, "keywords": prefs.get("keywords", [])}
-            self._log_ai("note_parser", prompt_text, text, result_obj,
-                         cost_ms=cost_ms, success=True, fallback=False)
-            return NoteParseResult(
-                prefs={"mood": mood, "flavor": flavor, "note": note, "keywords": prefs.get("keywords", [])},
-                note_raw=note, extra={"raw": text},
-            )
-        except asyncio.TimeoutError:
-            cost_ms = (time.perf_counter() - start) * 1000
-            self._log_ai("note_parser", prompt_text, "", None,
-                         cost_ms=cost_ms, success=False, fallback=True, error=f"超时{settings.ai.ai_timeout}s")
-            logger.warning("AI parse_note 超时(%ss)，回退本地兜底", settings.ai.ai_timeout)
-            return NoteParseResult(prefs=None, note_raw=note)
-        except Exception as e:
-            cost_ms = (time.perf_counter() - start) * 1000
-            self._log_ai("note_parser", prompt_text, "", None,
-                         cost_ms=cost_ms, success=False, fallback=True, error=str(e))
-            logger.warning("AI parse_note 失败，回退本地兜底: %s", e)
-            return NoteParseResult(prefs=None, note_raw=note)
-
-    async def personalize_reason(self, food: dict, prefs: dict, *, today_seed: int = 0) -> Optional[str]:
-        """AI2: 生成个性化推荐理由"""
-        cfg = settings.ai.agent("reason_writer")
-        if not cfg.enabled:
-            return None
-
-        import time
-        start = time.perf_counter()
-        prompt = (
-            f"菜品：{food.get('title')}（{food.get('category')}）\n"
-            f"默认理由：{food.get('reason')}\n"
-            f"用户心情：{prefs.get('mood') or '未知'}\n"
-            f"口味偏好：{prefs.get('flavor') or '未知'}\n"
-            f"想吃点啥：{prefs.get('note') or '无'}\n"
-            "请基于以上信息写一句个性化推荐理由。"
-        )
-        try:
-            result = await self._run_with_timeout(self._reason_agent, prompt)
-            text = self._extract_text(result)
-            text = (text or "").strip().strip('"').strip("「」").strip()
-            cost_ms = (time.perf_counter() - start) * 1000
-            self._log_ai("reason_writer", prompt, text, text,
-                         cost_ms=cost_ms, success=True, fallback=False)
-            return text or None
-        except asyncio.TimeoutError:
-            cost_ms = (time.perf_counter() - start) * 1000
-            self._log_ai("reason_writer", prompt, "", None,
-                         cost_ms=cost_ms, success=False, fallback=True, error=f"超时{settings.ai.ai_timeout}s")
-            logger.warning("AI personalize_reason 超时(%ss)，回退默认 reason", settings.ai.ai_timeout)
-            return None
-        except Exception as e:
-            cost_ms = (time.perf_counter() - start) * 1000
-            self._log_ai("reason_writer", prompt, "", None,
-                         cost_ms=cost_ms, success=False, fallback=True, error=str(e))
-            logger.warning("AI personalize_reason 失败，回退默认 reason: %s", e)
-            return None
-
-    async def generate_sign(self, *, today_seed: int = 0) -> Optional[dict]:
-        """AI3: 动态生成签文"""
-        cfg = settings.ai.agent("sign_generator")
-        if not cfg.enabled:
-            return None
-
-        import time
-        start = time.perf_counter()
-        prompt = "请生成一条今日签文。"
-        try:
-            result = await self._run_with_timeout(self._sign_agent, prompt)
-            text = self._extract_text(result)
-            data = self._safe_parse_json(text)
-            cost_ms = (time.perf_counter() - start) * 1000
-            if data and data.get("name") and data.get("text"):
-                self._log_ai("sign_generator", prompt, text, data,
-                             cost_ms=cost_ms, success=True, fallback=False)
-                return {"name": data["name"], "level": data.get("level", "中签"), "text": data["text"]}
-            self._log_ai("sign_generator", prompt, text, None,
-                         cost_ms=cost_ms, success=False, fallback=True, error="返回数据不完整")
-            return None
-        except asyncio.TimeoutError:
-            cost_ms = (time.perf_counter() - start) * 1000
-            self._log_ai("sign_generator", prompt, "", None,
-                         cost_ms=cost_ms, success=False, fallback=True, error=f"超时{settings.ai.ai_timeout}s")
-            logger.warning("AI generate_sign 超时(%ss)，回退静态签池", settings.ai.ai_timeout)
-            return None
-        except Exception as e:
-            cost_ms = (time.perf_counter() - start) * 1000
-            self._log_ai("sign_generator", prompt, "", None,
-                         cost_ms=cost_ms, success=False, fallback=True, error=str(e))
-            logger.warning("AI generate_sign 失败，回退静态签池: %s", e)
-            return None
+            pass
 
     async def pick_food(self, context: dict, *, today_seed: int = 0) -> Optional[dict]:
-        """AI4: AI 选菜（含理由 + 做法 + 黄历结合）"""
+        """AI 选菜（含理由 + 做法 + 黄历结合）"""
         cfg = settings.ai.agent("food_picker")
         if not cfg.enabled:
             return None
@@ -406,14 +250,45 @@ class OpenAIAgentsProvider(AIProvider):
             logger.warning("AI pick_food 失败，回退本地选菜: %s", e)
             return None
 
+    async def generate_sign(self, *, today_seed: int = 0) -> Optional[dict]:
+        """动态生成签文（可选功能）"""
+        cfg = settings.ai.agent("sign_generator")
+        if not cfg.enabled:
+            return None
+
+        import time
+        start = time.perf_counter()
+        prompt = "请生成一条今日签文。"
+        try:
+            result = await self._run_with_timeout(self._sign_agent, prompt)
+            text = self._extract_text(result)
+            data = self._safe_parse_json(text)
+            cost_ms = (time.perf_counter() - start) * 1000
+            if data and data.get("name") and data.get("text"):
+                self._log_ai("sign_generator", prompt, text, data,
+                             cost_ms=cost_ms, success=True, fallback=False)
+                return {"name": data["name"], "level": data.get("level", "中签"), "text": data["text"]}
+            self._log_ai("sign_generator", prompt, text, None,
+                         cost_ms=cost_ms, success=False, fallback=True, error="返回数据不完整")
+            return None
+        except asyncio.TimeoutError:
+            cost_ms = (time.perf_counter() - start) * 1000
+            self._log_ai("sign_generator", prompt, "", None,
+                         cost_ms=cost_ms, success=False, fallback=True, error=f"超时{settings.ai.ai_timeout}s")
+            logger.warning("AI generate_sign 超时(%ss)，回退静态签池", settings.ai.ai_timeout)
+            return None
+        except Exception as e:
+            cost_ms = (time.perf_counter() - start) * 1000
+            self._log_ai("sign_generator", prompt, "", None,
+                         cost_ms=cost_ms, success=False, fallback=True, error=str(e))
+            logger.warning("AI generate_sign 失败，回退静态签池: %s", e)
+            return None
+
     # ===== 内部工具 =====
 
     @staticmethod
     def _extract_text(result) -> str:
-        """从 Runner.run 返回值中提取文本
-
-        openai-agents 的结果对象 final_output 可能是 str 或 dict。
-        """
+        """从 Runner.run 返回值中提取文本"""
         if result is None:
             return ""
         final = getattr(result, "final_output", None)
@@ -425,10 +300,7 @@ class OpenAIAgentsProvider(AIProvider):
 
     @staticmethod
     def _safe_parse_json(text: str) -> Optional[dict]:
-        """容错 JSON 解析
-
-        LLM 输出常带 ```json 包裹或多余文本，这里尽力提取首个 {...} 块。
-        """
+        """容错 JSON 解析（LLM 输出常带 ```json 包裹或多余文本）"""
         if not text:
             return None
         text = text.strip()

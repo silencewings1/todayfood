@@ -1,14 +1,12 @@
 """抽签选择器
 
-将前端 useFortune.js 中的抽签相关纯函数迁移至此：
+纯函数集合，供服务层调用：
 - pick_today_food   按日期种子挑今日固定菜品
-- pick_by_tags      按 mood/flavor 加权打分挑菜
 - pick_any          完全随机挑一道（可排除指定 id）
 - pick_suitable     选今日宜吃组
 - pick_avoid        选今日忌吃清单
 - pick_lucky        选今日幸运三件套
-
-所有函数均为纯函数，便于测试与服务层组合使用。
+- pick_sign_obj     抽一支签
 """
 from __future__ import annotations
 
@@ -23,53 +21,10 @@ from app.data.avoids import avoid_pool
 
 
 def pick_today_food(seed: int) -> Food:
-    """按日期种子挑"今日固定"菜品（每天稳定）
-
-    与前端 pickTodayFood 一致：
-        rand = seededRandom(seed)
-        idx = floor(rand() * foodPool.length)
-    """
+    """按日期种子挑"今日固定"菜品（每天稳定）"""
     rand = seeded_random(seed)
     idx = int(rand() * len(food_pool))
     return food_pool[idx]
-
-
-def pick_by_tags(
-    prefs: dict,
-    salt_seed: Optional[int] = None,
-    *,
-    today_seed: int = 0,
-) -> Food:
-    """按偏好标签加权打分挑菜
-
-    与前端 pickByTags 一致：
-        - mood/flavor 命中各 +3 分
-        - 加上 rand() * 1.2 的扰动
-        - 取分数最高者
-
-    参数:
-        prefs: {"mood": str|None, "flavor": str|None, "note": str}
-        salt_seed: 显式盐种子；为 None 时使用 today_seed + 随机盐（每次不同）
-        today_seed: 当日种子，用于在 salt_seed 为 None 时构造扰动
-    """
-    if salt_seed is None:
-        salt_seed = today_seed + (random.randint(0, 999))
-    rand = seeded_random(salt_seed)
-
-    best: Optional[Food] = None
-    best_score = -1.0
-    for f in food_pool:
-        score = 0.0
-        if prefs.get("mood") and prefs["mood"] in f["tags"]["mood"]:
-            score += 3
-        if prefs.get("flavor") and prefs["flavor"] in f["tags"]["flavor"]:
-            score += 3
-        score += rand() * 1.2
-        if score > best_score:
-            best_score = score
-            best = f
-    assert best is not None
-    return best
 
 
 def pick_any(exclude_id: Optional[str] = None) -> Food:

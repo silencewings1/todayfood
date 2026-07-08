@@ -7,7 +7,7 @@
 
 [ai]
 # 是否启用 AI（默认启用）
-# - 启用后：所有推荐/解析优先走 AI，AI 异常或超时(见 ai_timeout)自动回退本地数据池
+# - 启用后：选菜优先走 AI，AI 异常或超时(见 ai_timeout)自动回退本地数据池
 # - 关闭后：直接走本地数据池，零配置可用
 # 注意：启用 AI 需配置环境变量 OPENAI_API_KEY，否则会自动回退本地
 enabled = true
@@ -41,29 +41,17 @@ timeout = 30
 max_retries = 2
 
 
-# ===== 三个 AI 接入点（对应 TASKS.md AI1/AI2/AI3）=====
+# ===== AI 接入点 =====
 # 每个接入点可独立开关、独立配置模型与温度
 
-[ai.agents.note_parser]
-# AI1: 「想吃点啥」自由文本解析为结构化偏好
-enabled = true
-model = ""          # 留空用全局 ai.model
-temperature = 0.2   # 低温度，结构化输出更稳定
-
-[ai.agents.reason_writer]
-# AI2: 个性化推荐理由
-enabled = true
-model = ""
-temperature = 0.8   # 高温度，文案更有创意
-
-[ai.agents.sign_generator]
-# AI3: 动态签文生成（优先级最低，默认关）
-enabled = false
-model = ""
-temperature = 0.9
-
 [ai.agents.food_picker]
-# AI4: AI 选菜（结合黄历推荐菜品，含理由+做法）
+# AI 选菜：结合黄历推荐菜品（含理由+做法+食材+步骤）
 enabled = true
 model = ""
 temperature = 0.7
+
+[ai.agents.sign_generator]
+# 动态签文生成（可选功能，默认关）
+enabled = false
+model = ""
+temperature = 0.9

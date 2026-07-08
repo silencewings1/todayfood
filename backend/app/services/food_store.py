@@ -123,5 +123,19 @@ def get_food_by_title(title: str) -> Optional[dict]:
         return None
 
 
+def find_food_by_id(food_id: str) -> Optional[dict]:
+    """按菜品 id 查找（扫描 DB，AI 菜品数量少无需索引）"""
+    with _lock, _get_conn() as conn:
+        rows = conn.execute("SELECT food_data FROM ai_foods").fetchall()
+    for row in rows:
+        try:
+            food = json.loads(row["food_data"])
+            if food.get("id") == food_id:
+                return food
+        except (json.JSONDecodeError, KeyError):
+            continue
+    return None
+
+
 # 模块加载时初始化表
 init_food_table()
