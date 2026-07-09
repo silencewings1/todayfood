@@ -2,7 +2,7 @@
 
 凭证与 session 参数从 config/app.toml [admin] 读取，
 可被环境变量 ADMIN_USERNAME / ADMIN_PASSWORD / ADMIN_SESSION_COOKIE 等覆盖。
-默认 admin / admin123（仅本地用，生产必须改）"""
+凭证必须通过环境变量或 .env 注入，代码与 toml 中不再提供默认值。"""
 from __future__ import annotations
 
 import secrets

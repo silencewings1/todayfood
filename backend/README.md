@@ -95,7 +95,7 @@ python -m app.main
 
 - 接口文档：<http://localhost:8000/docs>
 - 健康检查：<http://localhost:8000/health>（含 AI 配置摘要）
-- 后台管理：<http://localhost:8000/admin>（默认账号 admin / admin123）
+- 后台管理：<http://localhost:8000/admin>（账号密码通过 `ADMIN_USERNAME`/`ADMIN_PASSWORD` 环境变量配置）
 
 ### 4. 验证接口
 

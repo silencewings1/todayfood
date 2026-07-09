@@ -161,6 +161,15 @@ def create_app() -> FastAPI:
         daily_refresh_task.stop()
 
     logger.info("FastAPI 应用已创建，AI 启用状态: %s", settings.use_ai)
+
+    # admin 凭证校验：未配置则警告（admin 路由仍可加载，但无法登录）
+    admin_cfg = settings.admin
+    if not admin_cfg.username or not admin_cfg.password:
+        logger.warning(
+            "admin 凭证未配置，后台管理无法登录。"
+            "请通过环境变量 ADMIN_USERNAME / ADMIN_PASSWORD 注入（见 backend/.env.example）。"
+        )
+
     return app
 
 

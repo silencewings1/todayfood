@@ -170,8 +170,8 @@ class AdminConfig:
     monitored_health_url: str = "http://127.0.0.1:8000/health"
     session_cookie: str = "admin_token"
     session_max_age: int = 86400
-    username: str = "admin"
-    password: str = "admin123"
+    username: str = ""
+    password: str = ""
     logs: AdminLogsConfig = field(default_factory=AdminLogsConfig)
 
 
@@ -189,8 +189,8 @@ def _build_admin_config() -> AdminConfig:
         ),
         session_cookie=os.getenv("ADMIN_SESSION_COOKIE", sec.get("session_cookie", "admin_token")),
         session_max_age=int(os.getenv("ADMIN_SESSION_MAX_AGE", sec.get("session_max_age", 86400))),
-        username=os.getenv("ADMIN_USERNAME", sec.get("username", "admin")),
-        password=os.getenv("ADMIN_PASSWORD", sec.get("password", "admin123")),
+        username=os.getenv("ADMIN_USERNAME", sec.get("username", "")),
+        password=os.getenv("ADMIN_PASSWORD", sec.get("password", "")),
         logs=AdminLogsConfig(
             query_days=int(os.getenv("ADMIN_LOG_QUERY_DAYS", logs_sec.get("query_days", 30))),
             query_max_rows=int(os.getenv("ADMIN_LOG_MAX_ROWS", logs_sec.get("query_max_rows", 10000))),

@@ -68,7 +68,7 @@ npm run dev
 # 打开 http://localhost:5173
 
 # 4. 后台管理
-#    内嵌：http://localhost:8000/admin（默认 admin / admin123）
+#    内嵌：http://localhost:8000/admin（账号密码通过 ADMIN_USERNAME/ADMIN_PASSWORD 环境变量配置）
 #    独立：python -m admin.main → http://localhost:9082
 ```
 
