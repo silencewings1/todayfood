@@ -25,8 +25,10 @@ const routes = [
   }
 ]
 
+// 嵌入 snowflow 主站时，路由 base 跟随 vite 的 base 配置
+// 开发环境 import.meta.env.BASE_URL 为 '/'，生产为 '/projects/todayfood/'
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) return savedPosition

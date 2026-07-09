@@ -10,7 +10,13 @@ export default defineConfig(({ mode }) => {
   const devPort = parseInt(env.VITE_DEV_PORT || '5173', 10)
   const proxyTarget = env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:8000'
 
+  // 嵌入 snowflow 主站时的子路径前缀
+  // 生产环境挂在 https://snowflow.cloud/projects/todayfood/ 下
+  // 开发环境保持根路径 '/'，可被 VITE_BASE_PATH 覆盖
+  const basePath = env.VITE_BASE_PATH || (mode === 'production' ? '/projects/todayfood/' : '/')
+
   return {
+    base: basePath,
     plugins: [vue()],
     resolve: {
       alias: {
