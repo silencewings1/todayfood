@@ -1,19 +1,19 @@
 [Unit]
-Description=TodayFood Admin FastAPI App
-After=network.target
+Description=TodayFood Admin FastAPI App (snowflow-site, optional standalone)
+After=network.target todayfood.service
 
 [Service]
 Type=simple
-WorkingDirectory=/home/ospacer/project/todayfood
-Environment=HOST=0.0.0.0
+WorkingDirectory=/home/ospacer/snowflow-site/todayfood
+Environment=HOST=127.0.0.1
 Environment=PORT=9082
 Environment=MONITORED_HEALTH_URL=http://127.0.0.1:9081/health
-EnvironmentFile=/home/ospacer/project/todayfood/admin/.env
-ExecStart=/home/ospacer/.py_food/bin/python -m uvicorn admin.main:app --host 0.0.0.0 --port 9082
+EnvironmentFile=/home/ospacer/snowflow-site/todayfood/backend/.env
+ExecStart=/home/ospacer/.py_ai/bin/python -m uvicorn admin.main:app --host 127.0.0.1 --port 9082
 Restart=always
 RestartSec=5
-StandardOutput=append:/home/ospacer/project/todayfood/logs/admin.log
-StandardError=append:/home/ospacer/project/todayfood/logs/admin.log
+StandardOutput=append:/home/ospacer/snowflow-site/todayfood/logs/admin.log
+StandardError=append:/home/ospacer/snowflow-site/todayfood/logs/admin.log
 
 [Install]
 WantedBy=default.target

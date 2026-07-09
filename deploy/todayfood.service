@@ -1,18 +1,19 @@
 [Unit]
-Description=TodayFood FastAPI App
+Description=TodayFood FastAPI App (snowflow-site)
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/ospacer/project/todayfood/backend
-Environment=USE_AI=1
-Environment=HOST=0.0.0.0
+WorkingDirectory=/home/ospacer/snowflow-site/todayfood/backend
+# AI 已在 backend/.env 配置；这里显式覆盖服务监听地址/端口
+Environment=HOST=127.0.0.1
 Environment=PORT=9081
-ExecStart=/home/ospacer/.py_food/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 9081
+Environment=MONITORED_HEALTH_URL=http://127.0.0.1:9081/health
+ExecStart=/home/ospacer/.py_ai/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 9081
 Restart=always
 RestartSec=5
-StandardOutput=append:/home/ospacer/project/todayfood/logs/uvicorn.log
-StandardError=append:/home/ospacer/project/todayfood/logs/uvicorn.log
+StandardOutput=append:/home/ospacer/snowflow-site/todayfood/logs/uvicorn.log
+StandardError=append:/home/ospacer/snowflow-site/todayfood/logs/uvicorn.log
 
 [Install]
 WantedBy=default.target

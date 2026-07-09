@@ -208,7 +208,9 @@ tr:hover td { background: #fafafa; }
 </div>
 
 <script>
-const API = '/admin/api';
+// 根据当前页面 URL 计算子路径前缀，使 admin 可挂在任意子路径下
+// 例如 /projects/todayfood/admin/  ->  /projects/todayfood/admin/api
+const API = window.location.pathname.replace(/\/$/, '') + '/api';
 const LOG_PAGE_SIZE = 10;
 let pollTimer = null;
 
