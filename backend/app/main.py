@@ -64,12 +64,14 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # 请求日志中间件：每次 /api 请求都打印日志 + 写入 SQLite
+    # 请求日志中间件：记录业务 /api 请求到 SQLite
+    # 注意：/admin/api/* 是管理后台自身请求（轮询/查询），不记入业务日志，
+    #       否则会导致日志自我繁殖（每5秒轮询产生新记录）
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
         path = request.url.path
-        # 跳过非业务请求（docs/openapi/admin静态）
-        if not path.startswith("/api") and not path.startswith("/admin/api"):
+        # 只记录业务接口 /api/*，跳过 admin 自身请求与静态资源
+        if not path.startswith("/api"):
             return await call_next(request)
 
         method = request.method

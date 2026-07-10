@@ -206,6 +206,15 @@ def get_stats() -> dict[str, Any]:
         one_hour_ago = time.time() - 3600
         api_1h = conn.execute("SELECT COUNT(*) FROM api_logs WHERE ts>?", (one_hour_ago,)).fetchone()[0]
         ai_1h = conn.execute("SELECT COUNT(*) FROM ai_logs WHERE ts>?", (one_hour_ago,)).fetchone()[0]
+        # 按 path 分组统计（Top 10），便于查看各接口调用分布
+        path_rows = conn.execute(
+            "SELECT path, COUNT(*) AS cnt, ROUND(AVG(cost_ms), 1) AS avg_cost "
+            "FROM api_logs GROUP BY path ORDER BY cnt DESC LIMIT 10"
+        ).fetchall()
+        path_breakdown = [
+            {"path": r["path"], "count": r["cnt"], "avg_cost_ms": r["avg_cost"] or 0}
+            for r in path_rows
+        ]
 
     return {
         "api_total": api_total,
@@ -216,6 +225,7 @@ def get_stats() -> dict[str, Any]:
         "avg_ai_cost_ms": round(avg_ai_cost, 2),
         "api_1h": api_1h,
         "ai_1h": ai_1h,
+        "path_breakdown": path_breakdown,
     }
 
 

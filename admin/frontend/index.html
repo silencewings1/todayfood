@@ -43,7 +43,7 @@ body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
 .stat-card .sub { color: #aaa; font-size: 11px; margin-top: 4px; }
 
 /* 配置展示 */
-.config-box { background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
+.config-box { background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.05); margin-bottom: 20px; }
 .config-box h3 { font-size: 14px; margin-bottom: 12px; color: #c4622d; }
 .config-row { display: flex; padding: 6px 0; border-bottom: 1px solid #f5f5f7; }
 .config-row .k { width: 140px; color: #888; }
@@ -51,6 +51,13 @@ body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
 .config-row .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; }
 .tag-on { background: #e8f5e9; color: #2e7d32; }
 .tag-off { background: #fbe9e7; color: #c62828; }
+
+/* 路径分组统计 */
+.breakdown-row { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #f5f5f7; }
+.breakdown-row .bd-path { flex: 1; font-family: monospace; font-size: 12px; color: #333; word-break: break-all; }
+.breakdown-row .bd-count { width: 70px; text-align: right; font-weight: 600; color: #c4622d; }
+.breakdown-row .bd-cost { width: 80px; text-align: right; color: #888; font-size: 12px; }
+.breakdown-bar { height: 4px; background: linear-gradient(90deg, #c4622d, #e89a5c); border-radius: 2px; margin-top: 2px; }
 
 /* 筛选条 */
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
@@ -124,6 +131,10 @@ tr:hover td { background: #fafafa; }
     <!-- 系统状态 -->
     <div id="tab-status" class="tab-pane">
       <div class="stats-grid" id="statsGrid"></div>
+      <div class="config-box">
+        <h3>接口调用分布（按 URL 分组 · Top 10）</h3>
+        <div id="pathBreakdown"></div>
+      </div>
       <div class="config-box">
         <h3>AI 配置</h3>
         <div id="aiConfig"></div>
@@ -297,6 +308,19 @@ async function loadStatus() {
       ['AI 平均耗时', s.avg_ai_cost_ms.toFixed(1) + ' ms', ''],
     ].map(([l, v, sub]) => `<div class="stat-card"><div class="label">${l}</div><div class="value">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`).join('');
     document.getElementById('statsGrid').innerHTML = statsHtml;
+
+    // 接口调用分布
+    const bd = s.path_breakdown || [];
+    const maxCount = bd.length ? bd[0].count : 1;
+    const bdHtml = bd.length ? bd.map(it => {
+      const pct = (it.count / maxCount * 100).toFixed(0);
+      return `<div class="breakdown-row">
+        <div class="bd-path">${escapeHtml(it.path)}<div class="breakdown-bar" style="width:${pct}%"></div></div>
+        <div class="bd-count">${it.count}</div>
+        <div class="bd-cost">${(it.avg_cost_ms||0).toFixed(1)}ms</div>
+      </div>`;
+    }).join('') : '<div class="empty">暂无数据</div>';
+    document.getElementById('pathBreakdown').innerHTML = bdHtml;
 
     const agents = Object.entries(c.agents).map(([k, v]) =>
       `<div class="config-row"><span class="k">${k}</span><span class="v"><span class="tag ${v.enabled ? 'tag-on' : 'tag-off'}">${v.enabled ? 'ON' : 'OFF'}</span> model=${v.model} temp=${v.temperature}</span></div>`
