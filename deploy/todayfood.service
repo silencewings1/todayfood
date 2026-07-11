@@ -1,5 +1,5 @@
 [Unit]
-Description=TodayFood FastAPI App (snowflow-site)
+Description=今日宜吃 / today food FastAPI App (snowflow-site)
 After=network.target
 
 [Service]

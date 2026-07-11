@@ -6,7 +6,7 @@
     <!-- 居中 logo + 标题 -->
     <section class="brand-center page">
       <AppLogo size="lg" />
-      <h1 class="about-title">今日宜吃</h1>
+      <h1 class="about-title">今日宜吃 / today food</h1>
       <p class="about-sub accent">AI + 黄历 · 生活娱乐赛道</p>
       <p class="about-sub">用黄历决定今天吃什么</p>
     </section>

@@ -27,7 +27,7 @@ from app.config import settings
 
 ADMIN_FRONTEND = PROJECT_ROOT / "admin" / "frontend"
 
-app = FastAPI(title="今日宜吃后台管理", version="0.1.0")
+app = FastAPI(title="今日宜吃 / today food 后台管理", version="0.1.0")
 app.include_router(admin_router)
 
 if ADMIN_FRONTEND.exists():

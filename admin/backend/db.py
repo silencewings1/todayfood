@@ -20,10 +20,6 @@ from typing import Any, Optional
 
 from app.config import settings
 
-# backend/data/log.db
-_BACKEND_ROOT = Path(__file__).resolve().parents[2] / "backend"
-_DB_DIR = _BACKEND_ROOT / "data"
-_DB_PATH = _DB_DIR / "log.db"
 
 # 查询参数来自配置；用函数读取保证热加载生效
 def _query_days() -> int:
@@ -43,8 +39,9 @@ def _get_conn() -> sqlite3.Connection:
     check_same_thread=False 允许多线程写入；
     实际写入由 _lock 串行化。
     """
-    _DB_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
+    db_path = Path(settings.database_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")  # 提升并发写性能
     return conn
@@ -93,20 +90,20 @@ def init_db() -> None:
         """)
 
 
-def insert_api_log(*, method: str, path: str, client: str = "", status: int = 0,
-                   cost_ms: float = 0, req_body: str = "", resp_summary: str = "",
-                   ua: str = "") -> None:
+def insert_api_log(*, method: str, path: str, status: int = 0,
+                   cost_ms: float = 0, req_body: str | None = None) -> None:
     with _lock, _get_conn() as conn:
         conn.execute(
             "INSERT INTO api_logs(ts, method, path, client, status, cost_ms, req_body, resp_summary, ua) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (time.time(), method, path, client, status, cost_ms, req_body, resp_summary, ua),
+            (time.time(), method, path, None, status, cost_ms, req_body, None, None),
         )
 
 
-def insert_ai_log(*, agent: str, prompt: str = "", response: str = "", parsed: str = "",
-                  cost_ms: float = 0, success: bool = True, fallback: bool = False,
-                  error: str = "", tokens: int = 0) -> None:
+def insert_ai_log(*, agent: str, prompt: str | None = None,
+                  response: str | None = None, parsed: str | None = None,
+                  cost_ms: float = 0, success: bool = True,
+                  fallback: bool = False, error: str = "", tokens: int = 0) -> None:
     with _lock, _get_conn() as conn:
         conn.execute(
             "INSERT INTO ai_logs(ts, agent, prompt, response, parsed, cost_ms, success, fallback, error, tokens) "
@@ -137,8 +134,8 @@ def query_api_logs(*, page: int = 1, page_size: int = 50,
         where.append("status = ?")
         params.append(status)
     if keyword:
-        where.append("(req_body LIKE ? OR resp_summary LIKE ? OR client LIKE ?)")
-        params.extend([f"%{keyword}%"] * 3)
+        where.append("(path LIKE ? OR req_body LIKE ?)")
+        params.extend((f"%{keyword}%", f"%{keyword}%"))
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
     offset = (page - 1) * page_size
@@ -238,9 +235,12 @@ def clear_logs(table: str = "all") -> None:
             conn.execute("DELETE FROM ai_logs")
 
 
-def cleanup_old(days: int = 7, max_rows: int = 10000) -> None:
-    """物理删除旧日志；当前不由后台服务自动调用。"""
-    cutoff = time.time() - days * 86400
+def cleanup_old(days: int | None = None, max_rows: int | None = None) -> None:
+    """按时间和单表行数上限物理删除旧日志。"""
+    days = settings.admin.logs.retention_days if days is None else days
+    max_rows = settings.admin.logs.retention_max_rows if max_rows is None else max_rows
+    cutoff = time.time() - max(0, days) * 86400
+    max_rows = max(0, max_rows)
     with _lock, _get_conn() as conn:
         conn.execute("DELETE FROM api_logs WHERE ts < ?", (cutoff,))
         conn.execute("DELETE FROM ai_logs WHERE ts < ?", (cutoff,))

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>今日宜吃 · 后台管理</title>
+<title>今日宜吃 / today food · 后台管理</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f5f7; color: #333; font-size: 14px; }
@@ -104,7 +104,7 @@ tr:hover td { background: #fafafa; }
 
 <!-- 登录页 -->
 <div class="login-wrap" id="loginPage">
-  <h1>今日宜吃 · 后台管理</h1>
+  <h1>今日宜吃 / today food · 后台管理</h1>
   <input type="text" id="username" placeholder="账号">
   <input type="password" id="password" placeholder="密码">
   <button onclick="doLogin()">登 录</button>
@@ -114,7 +114,7 @@ tr:hover td { background: #fafafa; }
 <!-- 主界面 -->
 <div class="app" id="appPage">
   <div class="header">
-    <h1>今日宜吃 · 后台管理</h1>
+    <h1>今日宜吃 / today food · 后台管理</h1>
     <div class="actions">
       <span class="user" id="user"></span>
       <button class="btn" onclick="logout()">退出</button>
@@ -157,14 +157,14 @@ tr:hover td { background: #fafafa; }
           <option value="500">500</option>
         </select>
         <input type="text" id="apiPath" placeholder="路径筛选">
-        <input type="text" id="apiKeyword" placeholder="关键字">
+        <input type="text" id="apiKeyword" placeholder="路径或请求正文关键词">
         <button class="btn btn-primary" onclick="loadApiLogs(1)">查询</button>
         <button class="btn btn-danger" onclick="clearLogs('api')">清空</button>
       </div>
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>时间</th><th>方法</th><th>路径</th><th>客户端</th><th>状态</th><th>耗时</th><th>请求体</th>
+            <th>时间</th><th>方法</th><th>路径</th><th>请求正文</th><th>状态</th><th>耗时</th>
           </tr></thead>
           <tbody id="apiLogsBody"></tbody>
         </table>
@@ -197,7 +197,7 @@ tr:hover td { background: #fafafa; }
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>时间</th><th>Agent</th><th>状态</th><th>耗时</th><th>Prompt</th><th>响应</th>
+            <th>时间</th><th>Agent</th><th>Prompt</th><th>原始响应</th><th>状态</th><th>耗时</th><th>Tokens</th>
           </tr></thead>
           <tbody id="aiLogsBody"></tbody>
         </table>
@@ -354,16 +354,15 @@ async function loadApiLogs(page) {
     const body = d.items.map(it => {
       const sc = it.status >= 500 ? '5xx' : it.status >= 400 ? '4xx' : '2xx';
       const time = new Date(it.ts * 1000).toLocaleString('zh-CN', {hour12: false});
-      return `<tr onclick="showDetail(${JSON.stringify(it).replace(/"/g,'&quot;')})" style="cursor:pointer">
+      return `<tr onclick="showDetail(decodeDetail('${encodeURIComponent(JSON.stringify(it))}'))" style="cursor:pointer">
         <td class="td-time">${time}</td>
-        <td>${it.method}</td>
-        <td class="td-path">${it.path}</td>
-        <td>${it.client || '-'}</td>
+        <td>${escapeHtml(it.method)}</td>
+        <td class="td-path">${escapeHtml(it.path)}</td>
+        <td>${preview(it.req_body)}</td>
         <td class="td-status status-${sc}">${it.status}</td>
         <td class="td-cost">${(it.cost_ms||0).toFixed(1)}ms</td>
-        <td class="truncate">${escapeHtml(it.req_body || '')}</td>
       </tr>`;
-    }).join('') || '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
     document.getElementById('apiLogsBody').innerHTML = body;
     renderPagination('apiPagination', page, d.total, LOG_PAGE_SIZE, loadApiLogs);
   } catch (e) {}
@@ -387,15 +386,16 @@ async function loadAiLogs(page) {
         ? '<span class="tag-success">成功</span>'
         : '<span class="tag-fail">失败</span>';
       const fallbackTag = it.fallback ? '<span class="tag-fallback">兜底</span>' : '';
-      return `<tr onclick="showDetail(${JSON.stringify(it).replace(/"/g,'&quot;')})" style="cursor:pointer">
+      return `<tr onclick="showDetail(decodeDetail('${encodeURIComponent(JSON.stringify(it))}'))" style="cursor:pointer">
         <td class="td-time">${time}</td>
-        <td>${it.agent}</td>
+        <td>${escapeHtml(it.agent)}</td>
+        <td>${preview(it.prompt)}</td>
+        <td>${preview(it.response)}</td>
         <td>${statusTag} ${fallbackTag}</td>
         <td class="td-cost">${(it.cost_ms||0).toFixed(1)}ms</td>
-        <td class="truncate">${escapeHtml(it.prompt || '')}</td>
-        <td class="truncate">${escapeHtml(it.response || '')}</td>
+        <td>${it.tokens || 0}</td>
       </tr>`;
-    }).join('') || '<tr><td colspan="6" class="empty">暂无数据</td></tr>';
+    }).join('') || '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
     document.getElementById('aiLogsBody').innerHTML = body;
     renderPagination('aiPagination', page, d.total, LOG_PAGE_SIZE, loadAiLogs);
   } catch (e) {}
@@ -430,6 +430,10 @@ function renderPagination(elId, page, total, pageSize, loadFn) {
 }
 
 // ===== 详情弹窗 =====
+function decodeDetail(value) {
+  return JSON.parse(decodeURIComponent(value));
+}
+
 function showDetail(data) {
   const isApi = 'method' in data;
   document.getElementById('modalTitle').textContent = isApi ? 'API 调用详情' : 'AI 调用详情';
@@ -437,21 +441,20 @@ function showDetail(data) {
   if (isApi) {
     html = `
       <div class="row"><div class="k">时间</div><div class="v">${new Date(data.ts * 1000).toLocaleString('zh-CN', {hour12: false})}</div></div>
-      <div class="row"><div class="k">方法 · 路径</div><div class="v">${data.method} ${data.path}</div></div>
-      <div class="row"><div class="k">客户端 · UA</div><div class="v">${data.client || '-'} · ${escapeHtml(data.ua || '-')}</div></div>
+      <div class="row"><div class="k">方法 · 路径</div><div class="v">${escapeHtml(data.method)} ${escapeHtml(data.path)}</div></div>
       <div class="row"><div class="k">状态码 · 耗时</div><div class="v">${data.status} · ${(data.cost_ms||0).toFixed(1)}ms</div></div>
-      <div class="row"><div class="k">请求体</div><div class="v">${escapeHtml(data.req_body || '(空)')}</div></div>
-      <div class="row"><div class="k">响应摘要</div><div class="v">${escapeHtml(data.resp_summary || '(空)')}</div></div>
+      <div class="row"><div class="k">请求正文</div><div class="v">${detailValue(data.req_body)}</div></div>
     `;
   } else {
     html = `
       <div class="row"><div class="k">时间</div><div class="v">${new Date(data.ts * 1000).toLocaleString('zh-CN', {hour12: false})}</div></div>
-      <div class="row"><div class="k">Agent · 耗时</div><div class="v">${data.agent} · ${(data.cost_ms||0).toFixed(1)}ms</div></div>
+      <div class="row"><div class="k">Agent · 耗时</div><div class="v">${escapeHtml(data.agent)} · ${(data.cost_ms||0).toFixed(1)}ms</div></div>
       <div class="row"><div class="k">状态</div><div class="v">${data.success ? '成功' : '失败'} ${data.fallback ? '· 走兜底' : ''}</div></div>
-      <div class="row"><div class="k">错误</div><div class="v">${escapeHtml(data.error || '(无)')}</div></div>
-      <div class="row"><div class="k">Prompt</div><div class="v">${escapeHtml(data.prompt || '(空)')}</div></div>
-      <div class="row"><div class="k">响应</div><div class="v">${escapeHtml(data.response || '(空)')}</div></div>
-      <div class="row"><div class="k">解析结果</div><div class="v">${escapeHtml(data.parsed || '(空)')}</div></div>
+      <div class="row"><div class="k">Prompt</div><div class="v">${detailValue(data.prompt)}</div></div>
+      <div class="row"><div class="k">原始响应</div><div class="v">${detailValue(data.response)}</div></div>
+      <div class="row"><div class="k">解析结果</div><div class="v">${detailValue(data.parsed)}</div></div>
+      <div class="row"><div class="k">错误类型</div><div class="v">${escapeHtml(data.error || '未记录')}</div></div>
+      <div class="row"><div class="k">Tokens</div><div class="v">${data.tokens || 0}</div></div>
     `;
   }
   document.getElementById('modalBody').innerHTML = html;
@@ -460,6 +463,16 @@ function showDetail(data) {
 
 function closeModal() {
   document.getElementById('modal').classList.remove('show');
+}
+
+function detailValue(value) {
+  return escapeHtml(value || '未记录');
+}
+
+function preview(value) {
+  if (!value) return '未记录';
+  const text = String(value);
+  return escapeHtml(text.length > 80 ? text.slice(0, 80) + '...' : text);
 }
 
 function escapeHtml(s) {

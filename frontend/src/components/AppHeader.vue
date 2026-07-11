@@ -16,7 +16,7 @@
 import AppLogo from '@/components/AppLogo.vue'
 
 defineProps({
-  title: { type: String, default: '今日宜吃' },
+  title: { type: String, default: '今日宜吃 / today food' },
   dateText: { type: String, default: '' }
 })
 </script>
@@ -43,11 +43,12 @@ defineProps({
 }
 
 .brand-title {
-  font-size: 1.3rem;
+  font-size: 1.05rem;
   font-weight: 800;
   color: var(--ink-strong);
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   margin: 0;
+  white-space: nowrap;
 }
 
 .top-right {

@@ -157,9 +157,16 @@ class SchedulerConfig:
 
 @dataclass(frozen=True)
 class AdminLogsConfig:
-    """后台日志查询参数"""
+    """后台日志采集、查询与保留参数"""
     query_days: int = 30
     query_max_rows: int = 10000
+    capture_api_body: bool = True
+    capture_ai_content: bool = True
+    api_body_max_chars: int = 4096
+    ai_prompt_max_chars: int = 12000
+    ai_response_max_chars: int = 12000
+    retention_days: int = 30
+    retention_max_rows: int = 10000
 
 
 @dataclass(frozen=True)
@@ -194,6 +201,27 @@ def _build_admin_config() -> AdminConfig:
         logs=AdminLogsConfig(
             query_days=int(os.getenv("ADMIN_LOG_QUERY_DAYS", logs_sec.get("query_days", 30))),
             query_max_rows=int(os.getenv("ADMIN_LOG_MAX_ROWS", logs_sec.get("query_max_rows", 10000))),
+            capture_api_body=os.getenv(
+                "ADMIN_LOG_CAPTURE_API_BODY", str(logs_sec.get("capture_api_body", True))
+            ).lower() in ("1", "true", "yes"),
+            capture_ai_content=os.getenv(
+                "ADMIN_LOG_CAPTURE_AI_CONTENT", str(logs_sec.get("capture_ai_content", True))
+            ).lower() in ("1", "true", "yes"),
+            api_body_max_chars=int(os.getenv(
+                "ADMIN_LOG_API_BODY_MAX_CHARS", logs_sec.get("api_body_max_chars", 4096)
+            )),
+            ai_prompt_max_chars=int(os.getenv(
+                "ADMIN_LOG_AI_PROMPT_MAX_CHARS", logs_sec.get("ai_prompt_max_chars", 12000)
+            )),
+            ai_response_max_chars=int(os.getenv(
+                "ADMIN_LOG_AI_RESPONSE_MAX_CHARS", logs_sec.get("ai_response_max_chars", 12000)
+            )),
+            retention_days=int(os.getenv(
+                "ADMIN_LOG_RETENTION_DAYS", logs_sec.get("retention_days", 30)
+            )),
+            retention_max_rows=int(os.getenv(
+                "ADMIN_LOG_RETENTION_MAX_ROWS", logs_sec.get("retention_max_rows", 10000)
+            )),
         ),
     )
 
@@ -225,6 +253,10 @@ class Settings:
         "CACHE_ENABLED",
         str(app_toml.get("app", {}).get("cache_enabled", True))
     ).lower() in ("1", "true", "yes")
+    database_path: str = os.getenv(
+        "TODAYFOOD_DB_PATH",
+        str(Path(__file__).resolve().parents[1] / "data" / "log.db"),
+    )
 
     # ===== AI 选菜频率限制 =====
     rate_limit_window_sec: int = int(os.getenv(

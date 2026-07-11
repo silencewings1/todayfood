@@ -18,19 +18,17 @@ import time
 from pathlib import Path
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+from app.config import settings
 
-# 复用同一数据库文件
-_BACKEND_ROOT = Path(__file__).resolve().parents[2]
-_DB_DIR = _BACKEND_ROOT / "data"
-_DB_PATH = _DB_DIR / "log.db"
+logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 
 
 def _get_conn() -> sqlite3.Connection:
-    _DB_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
+    db_path = Path(settings.database_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
@@ -50,6 +48,13 @@ def init_food_table() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_ai_foods_date ON ai_foods(date);
         CREATE INDEX IF NOT EXISTS idx_ai_foods_ts ON ai_foods(updated_ts);
+
+        CREATE TABLE IF NOT EXISTS daily_foods (
+            date TEXT PRIMARY KEY,
+            food_data TEXT NOT NULL,
+            source TEXT NOT NULL,
+            created_ts REAL NOT NULL
+        );
         """)
 
 
@@ -87,6 +92,35 @@ def get_latest_food() -> Optional[dict]:
         return json.loads(row["food_data"])
     except (json.JSONDecodeError, KeyError):
         return None
+
+
+def get_daily_food(date_str: str) -> Optional[dict]:
+    """获取指定日期已固定的首页菜品。"""
+    with _lock, _get_conn() as conn:
+        row = conn.execute(
+            "SELECT food_data FROM daily_foods WHERE date = ?", (date_str,)
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        return json.loads(row["food_data"])
+    except (json.JSONDecodeError, KeyError):
+        return None
+
+
+def save_daily_food_if_absent(date_str: str, food: dict, source: str = "static") -> dict:
+    """首次写入指定日期的首页菜品，并返回最终保存值。"""
+    food_json = json.dumps(food, ensure_ascii=False)
+    with _lock, _get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO daily_foods(date, food_data, source, created_ts) "
+            "VALUES (?, ?, ?, ?)",
+            (date_str, food_json, source, time.time()),
+        )
+        row = conn.execute(
+            "SELECT food_data FROM daily_foods WHERE date = ?", (date_str,)
+        ).fetchone()
+    return json.loads(row["food_data"])
 
 
 def get_random_food(exclude_title: Optional[str] = None) -> Optional[dict]:

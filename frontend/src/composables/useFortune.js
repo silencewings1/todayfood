@@ -124,7 +124,7 @@ export function useFortune() {
   function buildShareText({ almanacYi, almanacJi, suitable, avoid, lucky, level }) {
     const f = state.current
     if (!f) return ''
-    return `我的今日宜吃：${f.title}
+    return `我的今日宜吃 / today food：${f.title}
 今日食运：${level || f.level}
 黄历宜：${almanacYi.join('、')}
 黄历忌：${almanacJi.join('、')}

@@ -61,7 +61,18 @@ session_max_age = 86400
 
 # ===== 后台日志查询 =====
 [admin.logs]
-# 日志保留查询天数（超过不返回，但仍可能在库中）
+# 日志查询天数
 query_days = 30
 # 单表最大返回行数上限（防止全表扫描）
 query_max_rows = 10000
+# 采集 API 请求正文（仅 JSON 和 URL 编码表单；敏感字段会脱敏）
+capture_api_body = true
+# 采集 AI prompt、原始响应和解析结果（敏感字段会脱敏）
+capture_ai_content = true
+# 各类正文的最大保存字符数
+api_body_max_chars = 4096
+ai_prompt_max_chars = 12000
+ai_response_max_chars = 12000
+# 物理保留策略：超过天数或单表行数的日志会被删除
+retention_days = 30
+retention_max_rows = 10000

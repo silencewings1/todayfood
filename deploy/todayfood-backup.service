@@ -1,5 +1,5 @@
 [Unit]
-Description=Backup TodayFood logs and admin database (snowflow-site)
+Description=Backup 今日宜吃 / today food logs and admin database (snowflow-site)
 
 [Service]
 Type=oneshot

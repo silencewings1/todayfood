@@ -16,7 +16,9 @@ from app.config import settings
 def login(username: str, password: str, response: Response) -> bool:
     """校验账号密码，成功则写 cookie 并返回 True"""
     cfg = settings.admin
-    if username == cfg.username and password == cfg.password:
+    if not cfg.username or not cfg.password:
+        return False
+    if secrets.compare_digest(username, cfg.username) and secrets.compare_digest(password, cfg.password):
         token = secrets.token_urlsafe(32)
         from admin.backend import db
         db.create_session(token, cfg.session_max_age)

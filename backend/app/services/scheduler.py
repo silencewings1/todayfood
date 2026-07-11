@@ -57,8 +57,16 @@ class DailyRefreshTask:
         if self._thread:
             self._thread.join(timeout=2)
 
+    def _cleanup_logs(self) -> None:
+        try:
+            from admin.backend.db import cleanup_old
+            cleanup_old()
+        except Exception as e:
+            logger.warning("后台日志清理失败: %s", e)
+
     def _run(self) -> None:
-        # 启动时先记录当前日期，预热一次缓存
+        # 启动时先记录当前日期，预热一次缓存并清理日志
+        self._cleanup_logs()
         try:
             now = datetime.now(ZoneInfo(self.tz))
             self._last_date = f"{now.year:04d}-{now.month:02d}-{now.day:02d}"
@@ -79,6 +87,7 @@ class DailyRefreshTask:
                     logger.info("检测到日期切换 %s → %s，刷新缓存", self._last_date, today_str)
                     self._last_date = today_str
                     get_today_fortune()  # 触发新一天缓存生成
+                    self._cleanup_logs()
             except Exception as e:
                 logger.warning("DailyRefreshTask 检查失败: %s", e)
 

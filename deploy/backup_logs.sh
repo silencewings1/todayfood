@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT=${PROJECT_ROOT:-/home/ospacer/project/todayfood}
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT=${PROJECT_ROOT:-$(dirname "$SCRIPT_DIR")}
 RETENTION_DAYS=${RETENTION_DAYS:-14}
 STAMP=$(date +%F)
 BACKUP_ROOT="$PROJECT_ROOT/backups"
 DAY_DIR="$BACKUP_ROOT/$STAMP"
 LOG_DIR="$PROJECT_ROOT/logs"
 DB_PATH="$PROJECT_ROOT/backend/data/log.db"
+
+if [ ! -f "$DB_PATH" ]; then
+  echo "Database not found: $DB_PATH" >&2
+  exit 1
+fi
 
 mkdir -p "$DAY_DIR"
 

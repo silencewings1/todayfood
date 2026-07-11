@@ -9,7 +9,7 @@ const routes = [
     path: '/index',
     name: 'food',
     component: () => import('@/views/Home.vue'),
-    meta: { tab: 'food', title: '今日宜吃' }
+    meta: { tab: 'food', title: '今日宜吃 / today food' }
   },
   {
     path: '/pick',
@@ -21,7 +21,7 @@ const routes = [
     path: '/about',
     name: 'about',
     component: () => import('@/views/Mine.vue'),
-    meta: { tab: 'about', title: '关于今日宜吃' }
+    meta: { tab: 'about', title: '关于今日宜吃 / today food' }
   }
 ]
 

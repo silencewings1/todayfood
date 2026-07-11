@@ -40,8 +40,9 @@ from app.schemas.fortune import (
 from app.services.cache import daily_cache
 from app.services.food_store import (
     find_food_by_id,
-    get_latest_food,
+    get_daily_food,
     get_random_food,
+    save_daily_food_if_absent,
     save_food,
 )
 from app.services.rate_limiter import rate_limiter
@@ -118,7 +119,7 @@ def _lookup_exclude_title(exclude_id: Optional[str]) -> Optional[str]:
 def get_today_fortune() -> TodayResponse:
     """GET /api/fortune/today
 
-    今日菜品优先从 DB 加载最近一条 AI 菜品，DB 为空则静态池兜底。
+    今日菜品按日期固定，用户抽菜不会改变首页结果。
     """
     today = today_info(settings.timezone)
     cache_key = f"today:{today['date']}"
@@ -130,9 +131,11 @@ def get_today_fortune() -> TodayResponse:
 
     extras = _build_daily_extras(today["seed"])
 
-    today_food = get_latest_food()
+    today_food = get_daily_food(today["date"])
     if today_food is None:
-        today_food = pick_today_food(today["seed"])
+        today_food = save_daily_food_if_absent(
+            today["date"], pick_today_food(today["seed"]), "static"
+        )
 
     _fill_sign_fields(today_food, extras)
 
@@ -176,7 +179,6 @@ async def draw_food(
         food_dict = await ai.pick_food(context, today_seed=today["seed"])
         if food_dict:
             save_food(food_dict, today["date"])
-            daily_cache.clear()
             ai_used = True
 
     elif ai.enabled:

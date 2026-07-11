@@ -13,7 +13,7 @@ router = APIRouter(tags=["meta"])
 @router.get("/meta", summary="服务元信息")
 def root() -> dict:
     return {
-        "name": "今日宜吃 API",
+        "name": "今日宜吃 / today food API",
         "version": __version__,
         "docs": "/docs",
         "ai_enabled": get_ai_provider().enabled,

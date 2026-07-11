@@ -22,9 +22,9 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.fortune import router as fortune_router
@@ -43,12 +43,68 @@ FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 ADMIN_FRONTEND = PROJECT_ROOT / "admin" / "frontend"
 
 
+class ApiLogMiddleware:
+    """旁路复制安全文本请求体，并记录业务 API 调用。"""
+
+    _CAPTURE_TYPES = ("application/json", "application/x-www-form-urlencoded")
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "")
+        if scope["type"] != "http" or not path.startswith("/api"):
+            await self.app(scope, receive, send)
+            return
+
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        content_type = headers.get(b"content-type", b"").decode("latin-1").lower()
+        capture = (
+            settings.admin.logs.capture_api_body
+            and any(content_type.startswith(item) for item in self._CAPTURE_TYPES)
+        )
+        body_parts: list[bytes] = []
+        body_limit = max(0, settings.admin.logs.api_body_max_chars) * 4
+        status = 500
+        start = time.perf_counter()
+
+        async def receive_wrapper():
+            message = await receive()
+            if capture and message["type"] == "http.request" and body_limit:
+                remaining = body_limit - sum(len(part) for part in body_parts)
+                if remaining > 0:
+                    body_parts.append(message.get("body", b"")[:remaining])
+            return message
+
+        async def send_wrapper(message):
+            nonlocal status
+            if message["type"] == "http.response.start":
+                status = message["status"]
+            await send(message)
+
+        try:
+            await self.app(scope, receive_wrapper, send_wrapper)
+        finally:
+            cost_ms = (time.perf_counter() - start) * 1000
+            method = scope.get("method", "")
+            logger.info("%s %s -> %d (%.1fms)", method, path, status, cost_ms)
+            try:
+                from admin.backend.collector import log_api_call
+                req_body = b"".join(body_parts).decode("utf-8", errors="replace") or None
+                log_api_call(
+                    method=method, path=path, status=status,
+                    cost_ms=cost_ms, req_body=req_body,
+                )
+            except Exception as e:
+                logger.debug("写入 admin 日志失败: %s", e)
+
+
 def create_app() -> FastAPI:
     """构造 FastAPI 应用实例"""
     app = FastAPI(
-        title="今日宜吃 API",
+        title="今日宜吃 / today food API",
         description=(
-            "「今日宜吃」小程序后端 —— 每日食历 / 抽签推荐 / AI 自由文本解析。\n\n"
+            "「今日宜吃 / today food」小程序后端 —— 每日食历 / 抽签推荐 / AI 自由文本解析。\n\n"
             "默认走本地兜底（DummyProvider），设置 `USE_AI=1` 启用 openai-agents SDK。"
         ),
         version="0.1.0",
@@ -63,61 +119,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    # 请求日志中间件：记录业务 /api 请求到 SQLite
-    # 注意：/admin/api/* 是管理后台自身请求（轮询/查询），不记入业务日志，
-    #       否则会导致日志自我繁殖（每5秒轮询产生新记录）
-    @app.middleware("http")
-    async def log_requests(request: Request, call_next):
-        path = request.url.path
-        # 只记录业务接口 /api/*，跳过 admin 自身请求与静态资源
-        if not path.startswith("/api"):
-            return await call_next(request)
-
-        method = request.method
-        client = request.client.host if request.client else "?"
-        ua = request.headers.get("user-agent", "")
-        start = time.perf_counter()
-
-        # POST 读取请求体（便于看到前端传了什么偏好）
-        body_preview = ""
-        if method == "POST":
-            try:
-                raw = await request.body()
-                body_preview = raw.decode("utf-8")[:500]
-                # 把 body 塞回 request，供下游使用
-                request._body = raw
-            except Exception:
-                body_preview = "<read failed>"
-
-        response = await call_next(request)
-
-        cost_ms = (time.perf_counter() - start) * 1000
-        logger.info(
-            "👉 %s %s <- %s -> %d (%.1fms)%s",
-            method, path, client, response.status_code, cost_ms,
-            f" body={body_preview[:200]}" if body_preview else "",
-        )
-
-        # 写入 SQLite（失败不影响主流程）
-        try:
-            from admin.backend.collector import log_api_call
-            # 读取响应体摘要（仅对小响应安全）
-            resp_summary = ""
-            if hasattr(response, 'body') and response.body:
-                try:
-                    resp_summary = response.body.decode("utf-8")[:300]
-                except Exception:
-                    pass
-            log_api_call(
-                method=method, path=path, client=client,
-                status=response.status_code, cost_ms=cost_ms,
-                req_body=body_preview, resp_body=resp_summary, ua=ua,
-            )
-        except Exception as e:
-            logger.debug("写入 admin 日志失败: %s", e)
-
-        return response
+    app.add_middleware(ApiLogMiddleware)
 
     # 路由注册
     app.include_router(meta_router)
