@@ -5,8 +5,9 @@ umask 022
 
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
-RELEASES_DIR="$FRONTEND_DIR/.releases"
-DIST_LINK="$FRONTEND_DIR/dist"
+DEPLOY_DIR="$FRONTEND_DIR/.deploy"
+RELEASES_DIR="$DEPLOY_DIR/releases"
+CURRENT_LINK="$DEPLOY_DIR/current"
 LOCK_FILE="/home/ospacer/.local/state/snowflow-site-deploy.lock"
 KEEP_RELEASES=5
 
@@ -16,8 +17,8 @@ flock -n 9 || { echo "Another snowflow-site deployment is running" >&2; exit 1; 
 
 switch_release() {
   local target="$1"
-  ln -sfn "$target" "$FRONTEND_DIR/.dist.next"
-  mv -Tf "$FRONTEND_DIR/.dist.next" "$DIST_LINK"
+  ln -sfn "$target" "$DEPLOY_DIR/current.next"
+  mv -Tf "$DEPLOY_DIR/current.next" "$CURRENT_LINK"
 }
 
 smoke_test() {
@@ -30,7 +31,7 @@ smoke_test() {
 
 case "${1:-}" in
   --list)
-    current="$(readlink -f "$DIST_LINK" 2>/dev/null || true)"
+    current="$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)"
     for release in "$RELEASES_DIR"/*; do
       [ -d "$release" ] || continue
       [ "$release" = "$current" ] && marker='*' || marker=' '
@@ -41,7 +42,7 @@ case "${1:-}" in
   --rollback)
     target="$RELEASES_DIR/${2:?Provide a release id}"
     [ -s "$target/index.html" ] || { echo "Release not found: $2" >&2; exit 1; }
-    previous="$(readlink -f "$DIST_LINK" 2>/dev/null || true)"
+    previous="$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)"
     switch_release "$target"
     smoke_test || { [ -n "$previous" ] && switch_release "$previous"; exit 1; }
     printf 'TodayFood frontend rolled back to %s\n' "$2"
@@ -54,7 +55,7 @@ esac
 cd "$FRONTEND_DIR"
 release_id="$(date -u +%Y%m%dT%H%M%S)-$(date -u +%N)-$(git -C "$PROJECT_DIR" rev-parse --short HEAD)"
 release_dir="$RELEASES_DIR/$release_id"
-previous="$(readlink -f "$DIST_LINK" 2>/dev/null || true)"
+previous="$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)"
 switched=false
 
 cleanup() {
@@ -65,7 +66,7 @@ cleanup() {
       switch_release "$previous"
       smoke_test || true
     fi
-    if [ "$(readlink -f "$DIST_LINK" 2>/dev/null || true)" != "$release_dir" ]; then
+    if [ "$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)" != "$release_dir" ]; then
       rm -rf "$release_dir"
     fi
   fi
@@ -80,18 +81,12 @@ find "$release_dir/assets" -type f -print -quit | grep -q . || { echo "Missing f
 grep -q '/projects/todayfood/assets/' "$release_dir/index.html" || { echo "Incorrect Vite base path" >&2; exit 1; }
 chmod -R a+rX "$release_dir"
 
-if [ -d "$DIST_LINK" ] && [ ! -L "$DIST_LINK" ]; then
-  initial="$RELEASES_DIR/$(date -u +%Y%m%dT%H%M%SZ)-initial"
-  mv "$DIST_LINK" "$initial"
-  previous="$initial"
-fi
-
 switch_release "$release_dir"
 switched=true
 smoke_test
 switched=false
 
-current="$(readlink -f "$DIST_LINK")"
+current="$(readlink -f "$CURRENT_LINK")"
 find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | cut -d' ' -f2- \
   | while IFS= read -r release; do [ "$release" = "$current" ] || printf '%s\n' "$release"; done \
   | tail -n "+$KEEP_RELEASES" | xargs -r rm -rf --

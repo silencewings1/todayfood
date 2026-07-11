@@ -8,7 +8,7 @@
 #   ./deploy/deploy.sh --backend    # 仅部署后端
 #
 # 功能：
-#   前端：本地 build → rsync dist 到 VPS（nginx 托管）
+#   前端：调用本机原子发布脚本
 #   后端：rsync 代码到 VPS → pip install → 重启 systemd
 #
 # 前提：SSH 免密已配、VPS 已装 nginx 和 Python 虚拟环境
@@ -21,11 +21,9 @@ VPS_HOST="your-vps-ip"
 
 # 本地路径
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-FRONTEND_DIR="$PROJECT_DIR/frontend"
 BACKEND_DIR="$PROJECT_DIR/backend"
 
 # VPS 路径
-REMOTE_FRONTEND="/var/www/todayfood"
 REMOTE_BACKEND="/home/ospacer/project/todayfood/backend"
 REMOTE_VENV="/home/ospacer/.py_food"
 REMOTE_SERVICE="todayfood.service"
@@ -40,7 +38,7 @@ case "${1:-}" in
 esac
 
 echo "================================================"
-echo "  todayfood 部署（目标: $TARGET）"
+echo "  今日宜吃 / today food 部署（目标: $TARGET）"
 echo "================================================"
 
 # ============================================================
@@ -48,20 +46,8 @@ echo "================================================"
 # ============================================================
 deploy_frontend() {
     echo ""
-    echo "[前端] 构建并部署..."
-
-    # 1. 本地构建
-    cd "$FRONTEND_DIR"
-    npm ci
-    npm run build
-    echo "前端构建完成 → $FRONTEND_DIR/dist"
-
-    # 2. 上传到 VPS
-    echo ""
-    echo "[前端] 上传到 VPS ($VPS_HOST:$REMOTE_FRONTEND)..."
-    rsync -avz --delete \
-        "$FRONTEND_DIR/dist/" "$VPS_USER@$VPS_HOST:$REMOTE_FRONTEND/"
-    echo "前端上传完成"
+    echo "[前端] 执行原子发布..."
+    "$PROJECT_DIR/deploy/deploy_frontend_atomic.sh"
 }
 
 # ============================================================
@@ -108,7 +94,7 @@ esac
 
 echo ""
 echo "================================================"
-echo "  部署完成！"
+echo "  今日宜吃 / today food 部署完成！"
 echo "  前端: https://snowflow.cloud/projects/todayfood/"
 echo "  API:  https://snowflow.cloud/projects/todayfood/api/"
 echo "  后台: https://snowflow.cloud/projects/todayfood/admin/"
