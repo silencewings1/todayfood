@@ -28,6 +28,7 @@ yarn-error.log*
 pnpm-debug.log*
 logs
 *.log
+backups/
 
 # ===== 环境变量 / 密钥 =====
 .env
