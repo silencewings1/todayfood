@@ -11,6 +11,8 @@ vendor/
 # ===== 构建产物 =====
 dist
 dist-ssr
+.releases/
+.dist.next
 *.local
 build/
 *.class
