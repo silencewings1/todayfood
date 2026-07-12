@@ -12,6 +12,7 @@ vendor/
 dist
 dist-ssr
 .deploy/
+.releases/
 *.local
 build/
 *.class
